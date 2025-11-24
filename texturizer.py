@@ -2,14 +2,99 @@
 """
 Fuzzy Skin Texture Generator for STL files
 Applies random surface displacement similar to slicer "fuzzy skin" feature
-Requires: numpy, numpy-stl
-Install: pip install numpy numpy-stl
+with multiple noise types matching OrcaSlicer's implementation.
+
+Requires: numpy, numpy-stl, noise
+Install: pip install numpy numpy-stl noise
 """
 
 import numpy as np
 from stl import mesh
 import argparse
 import sys
+import math
+
+# Try to import noise library for advanced noise types
+try:
+    from noise import pnoise3, snoise3
+    NOISE_AVAILABLE = True
+except ImportError:
+    NOISE_AVAILABLE = False
+    print("Warning: 'noise' library not installed. Only 'classic' noise type available.")
+    print("Install with: pip install noise")
+
+
+# Noise type constants matching OrcaSlicer
+NOISE_CLASSIC = 'classic'
+NOISE_PERLIN = 'perlin'
+NOISE_BILLOW = 'billow'
+NOISE_RIDGED = 'ridged'
+NOISE_VORONOI = 'voronoi'
+
+NOISE_TYPES = [NOISE_CLASSIC, NOISE_PERLIN, NOISE_BILLOW, NOISE_RIDGED, NOISE_VORONOI]
+
+
+class NoiseGenerator:
+    """Noise generator matching OrcaSlicer's fuzzy skin noise types."""
+
+    def __init__(self, noise_type=NOISE_CLASSIC, scale=1.0, octaves=4, persistence=0.5, seed=42):
+        self.noise_type = noise_type
+        self.scale = scale
+        self.octaves = octaves
+        self.persistence = persistence
+        self.seed = seed
+        self.rng = np.random.RandomState(seed)
+
+        # Pre-generate Voronoi points if needed
+        if noise_type == NOISE_VORONOI:
+            self._init_voronoi()
+
+    def _init_voronoi(self, num_points=100):
+        """Initialize Voronoi cell centers."""
+        self.voronoi_points = self.rng.rand(num_points, 3) * 10
+
+    def get_noise(self, x, y, z):
+        """Get noise value at position, returns value in [-1, 1]."""
+        # Apply scale
+        sx = x * self.scale
+        sy = y * self.scale
+        sz = z * self.scale
+
+        if self.noise_type == NOISE_CLASSIC:
+            # Uniform random noise based on position hash
+            return self.rng.uniform(-1, 1)
+
+        elif self.noise_type == NOISE_PERLIN:
+            if not NOISE_AVAILABLE:
+                return self.rng.uniform(-1, 1)
+            return pnoise3(sx, sy, sz, octaves=self.octaves,
+                          persistence=self.persistence, base=self.seed)
+
+        elif self.noise_type == NOISE_BILLOW:
+            if not NOISE_AVAILABLE:
+                return self.rng.uniform(-1, 1)
+            # Billow is absolute value of Perlin, creates cloud-like effect
+            value = pnoise3(sx, sy, sz, octaves=self.octaves,
+                           persistence=self.persistence, base=self.seed)
+            return abs(value) * 2 - 1  # Map [0, 1] back to [-1, 1]
+
+        elif self.noise_type == NOISE_RIDGED:
+            if not NOISE_AVAILABLE:
+                return self.rng.uniform(-1, 1)
+            # Ridged multifractal: 1 - abs(noise), creates sharp ridges
+            value = pnoise3(sx, sy, sz, octaves=self.octaves,
+                           persistence=self.persistence, base=self.seed)
+            return (1 - abs(value)) * 2 - 1
+
+        elif self.noise_type == NOISE_VORONOI:
+            # Voronoi: distance to nearest cell center
+            pos = np.array([sx, sy, sz])
+            distances = np.linalg.norm(self.voronoi_points - pos, axis=1)
+            min_dist = np.min(distances)
+            # Normalize to [-1, 1] range
+            return (min_dist / 2.0) * 2 - 1
+
+        return 0.0
 
 def generate_test_cube(size=20):
     """Generate a test cube STL mesh"""
@@ -72,7 +157,9 @@ def subdivide_triangle(v0, v1, v2, max_edge_length):
 
     return triangles
 
-def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42):
+def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
+                     noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
+                     noise_persistence=0.5, skip_bottom=False):
     """
     Apply fuzzy skin texture to mesh by subdividing and displacing vertices.
 
@@ -81,8 +168,22 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42):
         thickness: Maximum displacement distance (mm)
         point_distance: Target distance between texture points (mm)
         seed: Random seed for reproducibility
+        noise_type: Type of noise ('classic', 'perlin', 'billow', 'ridged', 'voronoi')
+        noise_scale: Frequency scale for noise (higher = more detail)
+        noise_octaves: Number of octaves for Perlin/Billow noise
+        noise_persistence: Amplitude persistence for Perlin/Billow noise
+        skip_bottom: If True, skip fuzzy skin on bottom layer (z ≈ min_z)
     """
     np.random.seed(seed)
+
+    # Create noise generator
+    noise_gen = NoiseGenerator(
+        noise_type=noise_type,
+        scale=noise_scale,
+        octaves=noise_octaves,
+        persistence=noise_persistence,
+        seed=seed
+    )
 
     print(f"Subdividing mesh (target edge length: {point_distance}mm)...")
 
@@ -112,6 +213,10 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42):
 
     print(f"Processing {len(unique_vertices)} unique vertices...")
 
+    # Find min Z for bottom layer detection
+    min_z = np.min(unique_vertices[:, 2])
+    bottom_threshold = min_z + 0.1  # 0.1mm tolerance for bottom layer
+
     # Calculate vertex normals by averaging face normals
     vertex_normals = np.zeros_like(unique_vertices)
     vertex_counts = np.zeros(len(unique_vertices))
@@ -140,12 +245,27 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42):
             if norm > 0:
                 vertex_normals[i] /= norm
 
-    # Apply random displacement to each unique vertex
+    # Apply displacement to each unique vertex using noise
     displaced_vertices = unique_vertices.copy()
+    skipped_count = 0
+
     for i in range(len(unique_vertices)):
-        # Random displacement amount (0 to thickness)
-        displacement_amount = np.random.random() * thickness
+        vertex = unique_vertices[i]
+
+        # Skip bottom layer if requested
+        if skip_bottom and vertex[2] <= bottom_threshold:
+            skipped_count += 1
+            continue
+
+        # Get noise value for this vertex position
+        noise_value = noise_gen.get_noise(vertex[0], vertex[1], vertex[2])
+
+        # Map noise from [-1, 1] to [0, thickness]
+        displacement_amount = (noise_value + 1) * 0.5 * thickness
         displaced_vertices[i] += vertex_normals[i] * displacement_amount
+
+    if skip_bottom and skipped_count > 0:
+        print(f"Skipped {skipped_count} bottom layer vertices")
 
     # Update mesh with displaced vertices
     for i in range(len(output_mesh.vectors)):
@@ -157,7 +277,22 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Apply fuzzy skin texture to STL files'
+        description='Apply fuzzy skin texture to STL files (OrcaSlicer-compatible)',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Noise Types:
+  classic   - Uniform random noise (default, fast)
+  perlin    - Perlin noise (smooth, organic patterns)
+  billow    - Cloud-like patterns (abs of Perlin)
+  ridged    - Sharp ridges (inverted Perlin)
+  voronoi   - Cell-based patterns
+
+Examples:
+  %(prog)s model.stl -o fuzzy.stl
+  %(prog)s model.stl -t 0.5 -p 0.6 --noise perlin
+  %(prog)s model.stl --noise voronoi --noise-scale 2.0
+  %(prog)s --cube-size 30 -t 0.4 --skip-bottom
+"""
     )
     parser.add_argument(
         'input',
@@ -193,9 +328,52 @@ def main():
         default=20,
         help='Test cube size in mm (default: 20)'
     )
-    
+
+    # Advanced noise options matching OrcaSlicer
+    parser.add_argument(
+        '--noise',
+        choices=NOISE_TYPES,
+        default=NOISE_CLASSIC,
+        help='Noise type (default: classic)'
+    )
+    parser.add_argument(
+        '--noise-scale',
+        type=float,
+        default=1.0,
+        help='Noise frequency scale - higher = more detail (default: 1.0)'
+    )
+    parser.add_argument(
+        '--noise-octaves',
+        type=int,
+        default=4,
+        help='Number of noise octaves for Perlin/Billow (default: 4)'
+    )
+    parser.add_argument(
+        '--noise-persistence',
+        type=float,
+        default=0.5,
+        help='Amplitude persistence for Perlin/Billow (default: 0.5)'
+    )
+    parser.add_argument(
+        '--skip-bottom',
+        action='store_true',
+        help='Skip fuzzy skin on bottom layer (for better bed adhesion)'
+    )
+    parser.add_argument(
+        '--ascii',
+        action='store_true',
+        help='Save output as ASCII STL instead of binary'
+    )
+
     args = parser.parse_args()
-    
+
+    # Validate noise type availability
+    if args.noise != NOISE_CLASSIC and not NOISE_AVAILABLE:
+        print(f"Error: Noise type '{args.noise}' requires the 'noise' library.")
+        print("Install with: pip install noise")
+        print("Or use --noise classic")
+        sys.exit(1)
+
     # Load or generate mesh
     if args.input:
         print(f"Loading {args.input}...")
@@ -207,21 +385,37 @@ def main():
     else:
         print(f"Generating {args.cube_size}mm test cube...")
         input_mesh = generate_test_cube(args.cube_size)
-    
+
     print(f"Input mesh: {len(input_mesh.vectors)} triangles")
-    
+
     # Apply fuzzy skin
-    print(f"Applying fuzzy skin (thickness={args.thickness}mm, point_distance={args.point_distance}mm)...")
+    noise_info = f"noise={args.noise}"
+    if args.noise in [NOISE_PERLIN, NOISE_BILLOW, NOISE_RIDGED]:
+        noise_info += f", scale={args.noise_scale}, octaves={args.noise_octaves}"
+    elif args.noise == NOISE_VORONOI:
+        noise_info += f", scale={args.noise_scale}"
+
+    print(f"Applying fuzzy skin (thickness={args.thickness}mm, point_distance={args.point_distance}mm, {noise_info})...")
+
     output_mesh = apply_fuzzy_skin(
         input_mesh,
         thickness=args.thickness,
         point_distance=args.point_distance,
-        seed=args.seed
+        seed=args.seed,
+        noise_type=args.noise,
+        noise_scale=args.noise_scale,
+        noise_octaves=args.noise_octaves,
+        noise_persistence=args.noise_persistence,
+        skip_bottom=args.skip_bottom
     )
-    
+
     # Save result
     print(f"Saving to {args.output}...")
-    output_mesh.save(args.output)
+    if args.ascii:
+        output_mesh.save(args.output, mode=mesh.Mode.ASCII)
+    else:
+        output_mesh.save(args.output)
+
     print("Done!")
 
 if __name__ == '__main__':
