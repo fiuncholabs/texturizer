@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STL Fuzzy Skin Texturizer</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: #00d4ff;
+            margin-bottom: 30px;
+        }
+        .main-content {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+        }
+        .controls {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 10px;
+            height: fit-content;
+        }
+        .viewer-container {
+            background: #16213e;
+            border-radius: 10px;
+            overflow: hidden;
+            min-height: 600px;
+            position: relative;
+        }
+        #viewer {
+            width: 100%;
+            height: 600px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        input[type="number"],
+        input[type="file"],
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #3a4a6b;
+            border-radius: 5px;
+            background: #0f3460;
+            color: #fff;
+            font-size: 14px;
+        }
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+        input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            transition: background 0.2s;
+        }
+        .btn-primary {
+            background: #00d4ff;
+            color: #000;
+        }
+        .btn-primary:hover {
+            background: #00b8e6;
+        }
+        .btn-primary:disabled {
+            background: #4a5568;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: #3a4a6b;
+            color: #fff;
+        }
+        .btn-secondary:hover {
+            background: #4a5a7b;
+        }
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+        .file-input-btn {
+            display: block;
+            padding: 12px;
+            background: #3a4a6b;
+            color: #fff;
+            text-align: center;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .file-name {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #888;
+            word-break: break-all;
+        }
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 20px 0 10px 0;
+            color: #00d4ff;
+            border-bottom: 1px solid #3a4a6b;
+            padding-bottom: 5px;
+        }
+        .section-title:first-child {
+            margin-top: 0;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+        .status.error {
+            background: #ff4757;
+            display: block;
+        }
+        .status.success {
+            background: #2ed573;
+            color: #000;
+            display: block;
+        }
+        .status.processing {
+            background: #ffa502;
+            color: #000;
+            display: block;
+        }
+        .viewer-hint {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            font-size: 12px;
+            color: #666;
+            pointer-events: none;
+        }
+        .noise-options {
+            display: none;
+        }
+        .noise-options.visible {
+            display: block;
+        }
+        .rotation-controls {
+            display: flex;
+            gap: 10px;
+        }
+        .btn-rotate {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #3a4a6b;
+            border-radius: 5px;
+            background: #0f3460;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-rotate:hover {
+            background: #1a4a7a;
+        }
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>STL Fuzzy Skin Texturizer</h1>
+
+        <div class="main-content">
+            <div class="controls">
+                <div id="status" class="status"></div>
+
+                <div class="section-title">Upload STL</div>
+                <div class="form-group">
+                    <div class="file-input-wrapper">
+                        <div class="file-input-btn">Choose STL File</div>
+                        <input type="file" id="stlFile" accept=".stl">
+                    </div>
+                    <div id="fileName" class="file-name">No file selected</div>
+                </div>
+
+                <div class="section-title">Basic Parameters</div>
+                <div class="form-group">
+                    <label for="thickness">Thickness (mm)</label>
+                    <input type="number" id="thickness" value="0.3" min="0.05" max="5" step="0.05">
+                </div>
+                <div class="form-group">
+                    <label for="pointDistance">Point Distance (mm)</label>
+                    <input type="number" id="pointDistance" value="0.8" min="0.1" max="5" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label for="seed">Random Seed</label>
+                    <input type="number" id="seed" value="42" min="0" max="999999" step="1">
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="skipBottom" checked>
+                        Skip bottom layer
+                    </label>
+                </div>
+
+                <div class="section-title">Noise Settings</div>
+                <div class="form-group">
+                    <label for="noiseType">Noise Type</label>
+                    <select id="noiseType">
+                        {% for noise in noise_types %}
+                        <option value="{{ noise }}">{{ noise.capitalize() }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div id="noiseOptions" class="noise-options">
+                    <div class="form-group">
+                        <label for="noiseScale">Noise Scale</label>
+                        <input type="number" id="noiseScale" value="1.0" min="0.1" max="10" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label for="noiseOctaves">Octaves</label>
+                        <input type="number" id="noiseOctaves" value="4" min="1" max="8" step="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="noisePersistence">Persistence</label>
+                        <input type="number" id="noisePersistence" value="0.5" min="0.1" max="1" step="0.05">
+                    </div>
+                </div>
+
+                <div class="section-title">Model Rotation</div>
+                <div class="form-group">
+                    <label>Rotate X</label>
+                    <div class="rotation-controls">
+                        <button class="btn-rotate" onclick="rotateModel('x', -90)">-90°</button>
+                        <button class="btn-rotate" onclick="rotateModel('x', 90)">+90°</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Rotate Y</label>
+                    <div class="rotation-controls">
+                        <button class="btn-rotate" onclick="rotateModel('y', -90)">-90°</button>
+                        <button class="btn-rotate" onclick="rotateModel('y', 90)">+90°</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Rotate Z</label>
+                    <div class="rotation-controls">
+                        <button class="btn-rotate" onclick="rotateModel('z', -90)">-90°</button>
+                        <button class="btn-rotate" onclick="rotateModel('z', 90)">+90°</button>
+                    </div>
+                </div>
+
+                <div class="section-title">Actions</div>
+                <button id="processBtn" class="btn btn-primary" disabled>Process STL</button>
+                <button id="downloadBtn" class="btn btn-primary" disabled>Download Result</button>
+                <button id="resetViewBtn" class="btn btn-secondary">Reset View</button>
+            </div>
+
+            <div class="viewer-container">
+                <div id="viewer"></div>
+                <div class="viewer-hint">Drag to rotate, scroll to zoom</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+
+    <script>
+        // Three.js setup
+        let scene, camera, renderer, controls, currentMesh;
+        const viewerContainer = document.getElementById('viewer');
+
+        function initViewer() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+
+            camera = new THREE.PerspectiveCamera(
+                45,
+                viewerContainer.clientWidth / viewerContainer.clientHeight,
+                0.1,
+                10000
+            );
+            camera.position.set(100, 100, 100);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
+            viewerContainer.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+            directionalLight2.position.set(-1, -1, -1);
+            scene.add(directionalLight2);
+
+            // Grid
+            const grid = new THREE.GridHelper(200, 20, 0x3a4a6b, 0x2a3a5b);
+            scene.add(grid);
+
+            animate();
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = viewerContainer.clientWidth / viewerContainer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
+        }
+
+        function loadSTL(arrayBuffer) {
+            if (currentMesh) {
+                scene.remove(currentMesh);
+            }
+
+            const loader = new THREE.STLLoader();
+            const geometry = loader.parse(arrayBuffer);
+
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x00d4ff,
+                specular: 0x111111,
+                shininess: 200
+            });
+
+            currentMesh = new THREE.Mesh(geometry, material);
+
+            // Rotate to match slicer convention (STL uses Z-up, Three.js uses Y-up)
+            geometry.rotateX(-Math.PI / 2);
+
+            // Center horizontally and place on grid (bottom at y=0)
+            geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            const minY = geometry.boundingBox.min.y;
+            currentMesh.position.set(-center.x, -minY, -center.z);
+
+            // Adjust camera to fit model
+            const size = new THREE.Vector3();
+            geometry.boundingBox.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            camera.position.set(maxDim * 1.5, maxDim * 1.5, maxDim * 1.5);
+            controls.target.set(0, 0, 0);
+            controls.update();
+
+            scene.add(currentMesh);
+        }
+
+        function rotateModel(axis, degrees) {
+            if (!currentMesh) return;
+
+            const radians = degrees * Math.PI / 180;
+            const geometry = currentMesh.geometry;
+
+            // Rotate geometry
+            if (axis === 'x') geometry.rotateX(radians);
+            else if (axis === 'y') geometry.rotateY(radians);
+            else if (axis === 'z') geometry.rotateZ(radians);
+
+            // Reposition to sit on grid
+            geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            const minY = geometry.boundingBox.min.y;
+            currentMesh.position.set(-center.x, -minY, -center.z);
+        }
+
+        function resetView() {
+            if (currentMesh) {
+                const geometry = currentMesh.geometry;
+                geometry.computeBoundingBox();
+                const size = new THREE.Vector3();
+                geometry.boundingBox.getSize(size);
+                const maxDim = Math.max(size.x, size.y, size.z);
+                camera.position.set(maxDim * 1.5, maxDim * 1.5, maxDim * 1.5);
+            } else {
+                camera.position.set(100, 100, 100);
+            }
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        // UI handling
+        const fileInput = document.getElementById('stlFile');
+        const fileNameDisplay = document.getElementById('fileName');
+        const processBtn = document.getElementById('processBtn');
+        const resetViewBtn = document.getElementById('resetViewBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const statusDiv = document.getElementById('status');
+        const noiseType = document.getElementById('noiseType');
+        const noiseOptions = document.getElementById('noiseOptions');
+
+        let uploadedFile = null;
+        let processedBlob = null;
+        let processedFilename = 'fuzzy_output.stl';
+        let processingStartTime = null;
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                uploadedFile = file;
+                fileNameDisplay.textContent = file.name;
+                processBtn.disabled = false;
+
+                // Load preview
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    loadSTL(event.target.result);
+                };
+                reader.readAsArrayBuffer(file);
+
+                setStatus('', '');
+            }
+        });
+
+        noiseType.addEventListener('change', () => {
+            const type = noiseType.value;
+            if (type === 'classic') {
+                noiseOptions.classList.remove('visible');
+            } else {
+                noiseOptions.classList.add('visible');
+            }
+        });
+
+        resetViewBtn.addEventListener('click', resetView);
+
+        downloadBtn.addEventListener('click', () => {
+            if (!processedBlob) return;
+
+            const url = URL.createObjectURL(processedBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = processedFilename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        processBtn.addEventListener('click', async () => {
+            if (!uploadedFile) return;
+
+            processBtn.disabled = true;
+            processingStartTime = performance.now();
+            setStatus('Processing... This may take a moment.', 'processing');
+
+            const formData = new FormData();
+            formData.append('file', uploadedFile);
+            formData.append('thickness', document.getElementById('thickness').value);
+            formData.append('point_distance', document.getElementById('pointDistance').value);
+            formData.append('seed', document.getElementById('seed').value);
+            formData.append('noise_type', noiseType.value);
+            formData.append('noise_scale', document.getElementById('noiseScale').value);
+            formData.append('noise_octaves', document.getElementById('noiseOctaves').value);
+            formData.append('noise_persistence', document.getElementById('noisePersistence').value);
+            formData.append('skip_bottom', document.getElementById('skipBottom').checked);
+
+            try {
+                const response = await fetch('/api/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Processing failed');
+                }
+
+                // Get filename from Content-Disposition header
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'fuzzy_output.stl';
+                if (contentDisposition) {
+                    const match = contentDisposition.match(/filename=(.+)/);
+                    if (match) filename = match[1];
+                }
+
+                // Store the result
+                processedBlob = await response.blob();
+                processedFilename = filename;
+
+                // Load processed model in viewer
+                const arrayBuffer = await processedBlob.arrayBuffer();
+                loadSTL(arrayBuffer);
+
+                // Enable download button
+                downloadBtn.disabled = false;
+
+                // Calculate processing time
+                const processingTime = ((performance.now() - processingStartTime) / 1000).toFixed(2);
+                setStatus(`Processing complete in ${processingTime}s! Click Download to save.`, 'success');
+            } catch (error) {
+                setStatus('Error: ' + error.message, 'error');
+            } finally {
+                processBtn.disabled = false;
+            }
+        });
+
+        function setStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = 'status';
+            if (type) {
+                statusDiv.classList.add(type);
+            }
+        }
+
+        // Initialize
+        initViewer();
+    </script>
+</body>
+</html>
