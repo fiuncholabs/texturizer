@@ -132,30 +132,37 @@ def subdivide_triangle(v0, v1, v2, max_edge_length):
     """
     Recursively subdivide a triangle until all edges are below max_edge_length.
     Returns a list of triangles (each triangle is a tuple of 3 vertices).
+    Uses iterative approach with a queue for better performance.
     """
-    # Calculate edge lengths
-    e0 = np.linalg.norm(v1 - v0)
-    e1 = np.linalg.norm(v2 - v1)
-    e2 = np.linalg.norm(v0 - v2)
-    max_edge = max(e0, e1, e2)
+    # Use a queue for iterative processing instead of recursion
+    queue = [(v0, v1, v2)]
+    result = []
 
-    # Base case: triangle is small enough
-    if max_edge <= max_edge_length:
-        return [(v0.copy(), v1.copy(), v2.copy())]
+    while queue:
+        v0, v1, v2 = queue.pop()
 
-    # Subdivide by splitting all edges at midpoints (4-way split)
-    m01 = (v0 + v1) / 2
-    m12 = (v1 + v2) / 2
-    m20 = (v2 + v0) / 2
+        # Calculate edge lengths
+        e0 = np.linalg.norm(v1 - v0)
+        e1 = np.linalg.norm(v2 - v1)
+        e2 = np.linalg.norm(v0 - v2)
+        max_edge = max(e0, e1, e2)
 
-    # Recursively subdivide the 4 new triangles
-    triangles = []
-    triangles.extend(subdivide_triangle(v0, m01, m20, max_edge_length))
-    triangles.extend(subdivide_triangle(m01, v1, m12, max_edge_length))
-    triangles.extend(subdivide_triangle(m20, m12, v2, max_edge_length))
-    triangles.extend(subdivide_triangle(m01, m12, m20, max_edge_length))
+        # Base case: triangle is small enough
+        if max_edge <= max_edge_length:
+            result.append((v0.copy(), v1.copy(), v2.copy()))
+        else:
+            # Subdivide by splitting all edges at midpoints (4-way split)
+            m01 = (v0 + v1) / 2
+            m12 = (v1 + v2) / 2
+            m20 = (v2 + v0) / 2
 
-    return triangles
+            # Add 4 new triangles to queue
+            queue.append((v0, m01, m20))
+            queue.append((m01, v1, m12))
+            queue.append((m20, m12, v2))
+            queue.append((m01, m12, m20))
+
+    return result
 
 def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                      noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
@@ -196,12 +203,10 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
 
     print(f"Subdivided {len(input_mesh.vectors)} triangles into {len(all_triangles)} triangles")
 
-    # Create new mesh from subdivided triangles
+    # Create new mesh from subdivided triangles (vectorized)
     output_mesh = mesh.Mesh(np.zeros(len(all_triangles), dtype=mesh.Mesh.dtype))
-    for i, (v0, v1, v2) in enumerate(all_triangles):
-        output_mesh.vectors[i][0] = v0
-        output_mesh.vectors[i][1] = v1
-        output_mesh.vectors[i][2] = v2
+    triangle_array = np.array(all_triangles)
+    output_mesh.vectors = triangle_array
 
     # Build vertex map to find shared vertices
     vertices = output_mesh.vectors.reshape(-1, 3)
@@ -217,61 +222,62 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     min_z = np.min(unique_vertices[:, 2])
     bottom_threshold = min_z + 0.1  # 0.1mm tolerance for bottom layer
 
-    # Calculate vertex normals by averaging face normals
+    # Calculate vertex normals by averaging face normals (vectorized)
     vertex_normals = np.zeros_like(unique_vertices)
     vertex_counts = np.zeros(len(unique_vertices))
 
-    for i in range(len(output_mesh.vectors)):
-        # Calculate face normal
-        v0, v1, v2 = output_mesh.vectors[i]
-        edge1 = v1 - v0
-        edge2 = v2 - v0
-        face_normal = np.cross(edge1, edge2)
-        norm = np.linalg.norm(face_normal)
-        if norm > 0:
-            face_normal = face_normal / norm
+    # Vectorized face normal calculation
+    v0 = output_mesh.vectors[:, 0]
+    v1 = output_mesh.vectors[:, 1]
+    v2 = output_mesh.vectors[:, 2]
+    edge1 = v1 - v0
+    edge2 = v2 - v0
+    face_normals = np.cross(edge1, edge2)
+    norms = np.linalg.norm(face_normals, axis=1, keepdims=True)
+    face_normals = np.divide(face_normals, norms, out=np.zeros_like(face_normals), where=norms[:, 0:1] > 0)
 
-        # Add to vertex normals
-        for j in range(3):
-            vertex_idx = inverse_indices[i * 3 + j]
-            vertex_normals[vertex_idx] += face_normal
-            vertex_counts[vertex_idx] += 1
+    # Accumulate face normals to vertex normals
+    indices_reshaped = inverse_indices.reshape(-1, 3)
+    for j in range(3):
+        np.add.at(vertex_normals, indices_reshaped[:, j], face_normals)
+        np.add.at(vertex_counts, indices_reshaped[:, j], 1)
 
-    # Normalize vertex normals
-    for i in range(len(vertex_normals)):
-        if vertex_counts[i] > 0:
-            vertex_normals[i] /= vertex_counts[i]
-            norm = np.linalg.norm(vertex_normals[i])
-            if norm > 0:
-                vertex_normals[i] /= norm
+    # Normalize vertex normals (vectorized)
+    mask = vertex_counts > 0
+    vertex_normals[mask] /= vertex_counts[mask, np.newaxis]
+    norms = np.linalg.norm(vertex_normals, axis=1, keepdims=True)
+    vertex_normals = np.divide(vertex_normals, norms, out=np.zeros_like(vertex_normals), where=norms > 0)
 
     # Apply displacement to each unique vertex using noise
     displaced_vertices = unique_vertices.copy()
-    skipped_count = 0
 
-    for i in range(len(unique_vertices)):
+    # Determine which vertices to process
+    if skip_bottom:
+        process_mask = unique_vertices[:, 2] > bottom_threshold
+        skipped_count = np.sum(~process_mask)
+    else:
+        process_mask = np.ones(len(unique_vertices), dtype=bool)
+        skipped_count = 0
+
+    # Get noise values for all vertices to process
+    noise_values = np.zeros(len(unique_vertices))
+    for i in np.where(process_mask)[0]:
         vertex = unique_vertices[i]
+        noise_values[i] = noise_gen.get_noise(vertex[0], vertex[1], vertex[2])
 
-        # Skip bottom layer if requested
-        if skip_bottom and vertex[2] <= bottom_threshold:
-            skipped_count += 1
-            continue
+    # Map noise from [-1, 1] to [0, thickness] and apply displacement (vectorized)
+    displacement_amounts = (noise_values + 1) * 0.5 * thickness
+    displaced_vertices += vertex_normals * displacement_amounts[:, np.newaxis]
 
-        # Get noise value for this vertex position
-        noise_value = noise_gen.get_noise(vertex[0], vertex[1], vertex[2])
-
-        # Map noise from [-1, 1] to [0, thickness]
-        displacement_amount = (noise_value + 1) * 0.5 * thickness
-        displaced_vertices[i] += vertex_normals[i] * displacement_amount
+    # Zero out displacement for skipped vertices
+    if skip_bottom:
+        displaced_vertices[~process_mask] = unique_vertices[~process_mask]
 
     if skip_bottom and skipped_count > 0:
         print(f"Skipped {skipped_count} bottom layer vertices")
 
-    # Update mesh with displaced vertices
-    for i in range(len(output_mesh.vectors)):
-        for j in range(3):
-            vertex_idx = inverse_indices[i * 3 + j]
-            output_mesh.vectors[i][j] = displaced_vertices[vertex_idx]
+    # Update mesh with displaced vertices (vectorized)
+    output_mesh.vectors = displaced_vertices[inverse_indices].reshape(-1, 3, 3)
 
     return output_mesh
 
