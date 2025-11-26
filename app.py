@@ -66,17 +66,22 @@ def process_stl():
             input_mesh = mesh.Mesh.from_file(tmp_input_path)
 
             # Apply fuzzy skin
-            output_mesh = apply_fuzzy_skin(
-                input_mesh,
-                thickness=thickness,
-                point_distance=point_distance,
-                seed=seed,
-                noise_type=noise_type,
-                noise_scale=noise_scale,
-                noise_octaves=noise_octaves,
-                noise_persistence=noise_persistence,
-                skip_bottom=skip_bottom
-            )
+            try:
+                output_mesh = apply_fuzzy_skin(
+                    input_mesh,
+                    thickness=thickness,
+                    point_distance=point_distance,
+                    seed=seed,
+                    noise_type=noise_type,
+                    noise_scale=noise_scale,
+                    noise_octaves=noise_octaves,
+                    noise_persistence=noise_persistence,
+                    skip_bottom=skip_bottom
+                )
+            except MemoryError:
+                return jsonify({'error': 'Out of memory. Try increasing point_distance or using a smaller mesh.'}), 500
+            except ValueError as ve:
+                return jsonify({'error': f'Processing error: {str(ve)}'}), 500
 
             # Save to temporary file
             with tempfile.NamedTemporaryFile(suffix='.stl', delete=False) as tmp_out:

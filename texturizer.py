@@ -194,27 +194,75 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
 
     print(f"Subdividing mesh (target edge length: {point_distance}mm)...")
 
-    # Subdivide all triangles
-    all_triangles = []
-    for face in input_mesh.vectors:
+    # Sanity check: estimate subdivision factor
+    # Find approximate edge length of input mesh
+    sample_edges = []
+    for i in range(min(100, len(input_mesh.vectors))):
+        v0, v1, v2 = input_mesh.vectors[i]
+        sample_edges.append(np.linalg.norm(v1 - v0))
+        sample_edges.append(np.linalg.norm(v2 - v1))
+        sample_edges.append(np.linalg.norm(v0 - v2))
+    avg_edge = np.mean(sample_edges)
+    subdivision_factor = (avg_edge / point_distance) ** 2
+    estimated_output_triangles = len(input_mesh.vectors) * subdivision_factor
+
+    # Warn if subdivision will be excessive
+    if estimated_output_triangles > 10_000_000:
+        print(f"WARNING: Estimated output size: {estimated_output_triangles:.0f} triangles")
+        print(f"This may cause memory issues. Consider increasing point_distance.")
+        print(f"Average input edge length: {avg_edge:.2f}mm, target: {point_distance}mm")
+
+    # Subdivide all triangles - estimate output size first to avoid reallocation
+    # Pre-allocate with estimated size (can grow if needed)
+    estimated_triangles = min(int(estimated_output_triangles * 1.2), len(input_mesh.vectors) * 1000)
+    estimated_triangles = max(estimated_triangles, len(input_mesh.vectors) * 4)
+    triangle_buffer = np.zeros((estimated_triangles, 3, 3), dtype=np.float32)
+    triangle_count = 0
+
+    for face_idx, face in enumerate(input_mesh.vectors):
         v0, v1, v2 = face
         subdivided = subdivide_triangle(v0, v1, v2, point_distance)
-        all_triangles.extend(subdivided)
 
-    print(f"Subdivided {len(input_mesh.vectors)} triangles into {len(all_triangles)} triangles")
+        # Expand buffer if needed
+        if triangle_count + len(subdivided) > len(triangle_buffer):
+            new_size = max(len(triangle_buffer) * 2, triangle_count + len(subdivided))
+            new_buffer = np.zeros((new_size, 3, 3), dtype=np.float32)
+            new_buffer[:triangle_count] = triangle_buffer[:triangle_count]
+            triangle_buffer = new_buffer
 
-    # Create new mesh from subdivided triangles (vectorized)
-    output_mesh = mesh.Mesh(np.zeros(len(all_triangles), dtype=mesh.Mesh.dtype))
-    triangle_array = np.array(all_triangles)
-    output_mesh.vectors = triangle_array
+        # Add triangles to buffer
+        for tri in subdivided:
+            triangle_buffer[triangle_count] = tri
+            triangle_count += 1
+
+        # Progress indicator for large meshes
+        if (face_idx + 1) % 1000 == 0:
+            print(f"  Processed {face_idx + 1}/{len(input_mesh.vectors)} faces...")
+
+    # Trim buffer to actual size
+    triangle_buffer = triangle_buffer[:triangle_count]
+
+    print(f"Subdivided {len(input_mesh.vectors)} triangles into {triangle_count} triangles")
+
+    # Create new mesh from subdivided triangles
+    output_mesh = mesh.Mesh(np.zeros(triangle_count, dtype=mesh.Mesh.dtype))
+    output_mesh.vectors = triangle_buffer
 
     # Build vertex map to find shared vertices
+    print("Finding unique vertices...")
     vertices = output_mesh.vectors.reshape(-1, 3)
     # Round to avoid floating point issues when finding unique vertices
     rounded = np.round(vertices, decimals=6)
-    unique_vertices, inverse_indices = np.unique(
-        rounded, axis=0, return_inverse=True
-    )
+
+    # For very large meshes, this can be memory intensive
+    try:
+        unique_vertices, inverse_indices = np.unique(
+            rounded, axis=0, return_inverse=True
+        )
+    except MemoryError:
+        print("Warning: Memory error during vertex deduplication. Mesh may be too large.")
+        print("Try increasing point_distance or reducing mesh size.")
+        raise
 
     print(f"Processing {len(unique_vertices)} unique vertices...")
 
@@ -277,8 +325,16 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
         print(f"Skipped {skipped_count} bottom layer vertices")
 
     # Update mesh with displaced vertices (vectorized)
+    print("Updating mesh with displaced vertices...")
     output_mesh.vectors = displaced_vertices[inverse_indices].reshape(-1, 3, 3)
 
+    # Validate output mesh
+    if np.any(np.isnan(output_mesh.vectors)) or np.any(np.isinf(output_mesh.vectors)):
+        print("ERROR: Output mesh contains invalid values (NaN or Inf)")
+        print("This may indicate numerical instability with the current parameters.")
+        raise ValueError("Invalid mesh output - contains NaN or Inf values")
+
+    print("Mesh processing complete!")
     return output_mesh
 
 def main():
