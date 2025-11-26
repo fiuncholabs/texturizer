@@ -53,7 +53,9 @@ This guide covers deployment options for the STL Texturizer web application.
    ```
 
 6. **Access the application:**
-   Open http://localhost:5000 in your browser
+   Open http://localhost:8000 in your browser
+
+   > **Note:** The app uses port 8000 by default to avoid conflicts with macOS AirPlay Receiver (which uses port 5000)
 
 ### Testing Production Mode Locally
 
@@ -78,7 +80,7 @@ gunicorn app:app --config gunicorn.conf.py
 |----------|-------------|---------|----------|
 | `FLASK_ENV` | Environment (development/production) | `development` | No |
 | `SECRET_KEY` | Secret key for sessions | Auto-generated | Yes (prod) |
-| `PORT` | Server port | `5000` | No |
+| `PORT` | Server port | `8000` | No |
 
 ### Optional Environment Variables
 
@@ -319,7 +321,7 @@ services:
     environment_slug: python
     instance_count: 1
     instance_size_slug: professional-xs
-    http_port: 5000
+    http_port: 8000
     health_check:
       http_path: /health
     envs:
@@ -344,7 +346,7 @@ services:
 docker build -t stl-texturizer .
 
 # Run container
-docker run -p 5000:5000 \
+docker run -p 8000:8000 \
   -e FLASK_ENV=production \
   -e SECRET_KEY=your-secret-key \
   stl-texturizer
@@ -360,7 +362,7 @@ services:
   web:
     build: .
     ports:
-      - "5000:5000"
+      - "8000:8000"
     environment:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY}
@@ -368,7 +370,7 @@ services:
       - MAX_CONTENT_LENGTH=52428800
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -416,7 +418,7 @@ docker-compose up -d
        server_name your-domain.com;
 
        location / {
-           proxy_pass http://localhost:5000;
+           proxy_pass http://localhost:8000;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

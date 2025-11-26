@@ -52,8 +52,10 @@ A web application and command-line tool for applying fuzzy skin texture to STL f
 
 4. **Open in browser:**
    ```
-   http://localhost:5000
+   http://localhost:8000
    ```
+
+   > **Note:** The app runs on port 8000 by default to avoid conflicts with macOS AirPlay Receiver (which uses port 5000). You can use a different port with `PORT=3000 python app.py`
 
 ### Command Line Tool
 
@@ -95,7 +97,7 @@ pip install numpy numpy-stl noise
    python app.py
    ```
 
-2. **Open http://localhost:5000 in your browser**
+2. **Open http://localhost:8000 in your browser**
 
 3. **Choose input:**
    - Upload an STL file, OR
@@ -193,7 +195,8 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** for detailed deployment instructions.
 **Deploy with Docker:**
 ```bash
 docker build -t stl-texturizer .
-docker run -p 5000:5000 -e FLASK_ENV=production stl-texturizer
+docker run -p 8000:8000 -e FLASK_ENV=production stl-texturizer
+# Or map to any port: docker run -p 3000:8000 -e FLASK_ENV=production stl-texturizer
 ```
 
 **Deploy to Render/Railway/Fly.io:**
@@ -245,13 +248,13 @@ Configuration is managed through environment variables. See [.env.example](.env.
 - `SECRET_KEY`: Secret key for sessions (required in production)
 - `MAX_CONTENT_LENGTH`: Max upload size (default: 50MB)
 - `RATELIMIT_ENABLED`: Enable rate limiting (default: true in production)
-- `PORT`: Server port (default: 5000)
+- `PORT`: Server port (default: 8000)
 
 **Example .env file:**
 ```bash
 FLASK_ENV=development
 SECRET_KEY=your-secret-key-here
-PORT=5000
+PORT=8000
 RATELIMIT_ENABLED=false
 LOG_LEVEL=INFO
 ```

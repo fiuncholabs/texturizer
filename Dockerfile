@@ -23,15 +23,15 @@ RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Expose port
-EXPOSE 5000
+EXPOSE 8000
 
 # Environment variables
 ENV FLASK_ENV=production
-ENV PORT=5000
+ENV PORT=8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:5000/health', timeout=5)"
+    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5)"
 
 # Run with gunicorn
 CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 600 --log-level info
