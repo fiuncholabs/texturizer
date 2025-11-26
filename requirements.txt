@@ -1,4 +1,16 @@
+# Core dependencies
 flask>=2.0.0
 numpy
 numpy-stl
 noise
+
+# Production server
+gunicorn>=20.1.0
+
+# Security and performance
+flask-cors>=3.0.10
+flask-limiter>=3.0.0
+flask-talisman>=1.0.0
+
+# Optional: Redis for distributed rate limiting (comment out if not using)
+# redis>=4.0.0
