@@ -229,12 +229,6 @@
                 <div id="status" class="status"></div>
 
                 <div class="section-title">Upload STL</div>
-                <div class="form-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="useDefaultCube">
-                        Use default cube instead of file upload
-                    </label>
-                </div>
                 <div id="fileUploadSection">
                     <div class="form-group">
                         <div class="file-input-wrapper">
@@ -244,9 +238,17 @@
                         <div id="fileName" class="file-name">No file selected</div>
                     </div>
                 </div>
-                <div id="cubeOptionsSection" style="display: none;">
+
+                <div class="section-title">Or Use Default Object</div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="useDefaultCube" checked>
+                        Use Fiuncholabs coin
+                    </label>
+                </div>
+                <div id="cubeOptionsSection">
                     <div class="form-group">
-                        <label for="cubeSize">Cube Size (mm)</label>
+                        <label for="cubeSize">Coin Diameter (mm)</label>
                         <input type="number" id="cubeSize" value="20" min="5" max="100" step="5">
                     </div>
                 </div>
@@ -320,7 +322,7 @@
                 </div>
 
                 <div class="section-title">Actions</div>
-                <button id="processBtn" class="btn btn-primary" disabled>Process STL</button>
+                <button id="processBtn" class="btn btn-primary">Process STL</button>
                 <button id="downloadBtn" class="btn btn-primary" disabled>Download Result</button>
                 <button id="resetViewBtn" class="btn btn-secondary">Reset View</button>
             </div>
@@ -506,19 +508,14 @@
         // Handle default cube checkbox
         useDefaultCube.addEventListener('change', (e) => {
             if (e.target.checked) {
-                fileUploadSection.style.display = 'none';
-                cubeOptionsSection.style.display = 'block';
                 processBtn.disabled = false;
-                uploadedFile = null;
 
-                // Track default cube usage
+                // Track default object usage
                 trackEvent('default_cube_selected');
 
-                // Generate and show default cube preview
-                generateDefaultCubePreview();
+                // Generate and show default coin preview
+                generateDefaultCoinPreview();
             } else {
-                fileUploadSection.style.display = 'block';
-                cubeOptionsSection.style.display = 'none';
                 processBtn.disabled = !uploadedFile;
 
                 // Clear preview if no file uploaded
@@ -529,17 +526,18 @@
             }
         });
 
-        // Update preview when cube size changes
+        // Update preview when coin size changes
         document.getElementById('cubeSize').addEventListener('input', () => {
             if (useDefaultCube.checked) {
-                generateDefaultCubePreview();
+                generateDefaultCoinPreview();
             }
         });
 
-        function generateDefaultCubePreview() {
-            const size = parseFloat(document.getElementById('cubeSize').value);
-            // Generate a simple cube preview
-            const geometry = new THREE.BoxGeometry(size, size, size);
+        function generateDefaultCoinPreview() {
+            const diameter = parseFloat(document.getElementById('cubeSize').value);
+            const thickness = diameter * 0.075;
+            // Generate a simple cylinder preview (approximation of coin)
+            const geometry = new THREE.CylinderGeometry(diameter / 2, diameter / 2, thickness, 32);
             const material = new THREE.MeshPhongMaterial({
                 color: 0x00d4ff,
                 specular: 0x111111,
@@ -551,11 +549,11 @@
             }
 
             currentMesh = new THREE.Mesh(geometry, material);
-            currentMesh.position.set(0, size / 2, 0);
+            currentMesh.position.set(0, thickness / 2, 0);
             scene.add(currentMesh);
 
             // Adjust camera
-            camera.position.set(size * 1.5, size * 1.5, size * 1.5);
+            camera.position.set(diameter * 1.5, diameter * 1.5, diameter * 1.5);
             controls.target.set(0, 0, 0);
             controls.update();
         }
@@ -566,6 +564,9 @@
                 uploadedFile = file;
                 fileNameDisplay.textContent = file.name;
                 processBtn.disabled = false;
+
+                // Uncheck the default coin checkbox since user uploaded a file
+                useDefaultCube.checked = false;
 
                 // Track file upload
                 trackEvent('file_uploaded', {
@@ -709,6 +710,11 @@
 
         // Initialize
         initViewer();
+
+        // Load default coin on page load
+        if (useDefaultCube.checked) {
+            generateDefaultCoinPreview();
+        }
     </script>
 </body>
 </html>

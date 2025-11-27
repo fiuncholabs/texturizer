@@ -97,36 +97,134 @@ class NoiseGenerator:
         return 0.0
 
 def generate_test_cube(size=20):
-    """Generate a test cube STL mesh"""
-    # Define the 8 vertices of a cube
-    vertices = np.array([
-        [-size/2, -size/2, -size/2],
-        [+size/2, -size/2, -size/2],
-        [+size/2, +size/2, -size/2],
-        [-size/2, +size/2, -size/2],
-        [-size/2, -size/2, +size/2],
-        [+size/2, -size/2, +size/2],
-        [+size/2, +size/2, +size/2],
-        [-size/2, +size/2, +size/2]
-    ])
-    
-    # Define the 12 triangles (2 per face)
-    faces = np.array([
-        [0,3,1], [1,3,2],  # Bottom
-        [4,5,7], [5,6,7],  # Top
-        [0,1,5], [0,5,4],  # Front
-        [2,3,7], [2,7,6],  # Back
-        [0,4,7], [0,7,3],  # Left
-        [1,2,6], [1,6,5]   # Right
-    ])
-    
+    """
+    Generate default test object: Fiuncholabs Fern Coin
+    A coin-like piece with embossed fern design (Fiuncholabs branding)
+
+    Args:
+        size: Diameter of the coin (default 20mm for backward compatibility)
+
+    Returns:
+        mesh.Mesh object
+    """
+    diameter = size  # Use size parameter as diameter
+    thickness = size * 0.075  # Proportional thickness
+    fern_height = size * 0.02  # Proportional emboss height
+    resolution = max(60, int(size * 3))  # Higher resolution for larger coins
+
+    radius = diameter / 2
+    num_radial = max(20, int(size))
+
+    def fern_function(x, y):
+        """Generate stylized fern pattern (Fiuncholabs mascot)"""
+        # Normalize coordinates
+        r = np.sqrt(x**2 + y**2) / radius
+
+        # Main stem along y-axis
+        stem_width = 0.03
+        stem_dist = abs(x) / radius
+        on_stem = stem_dist < stem_width and y > -radius * 0.3 and y < radius * 0.6
+
+        fern_value = 1.0 if on_stem else 0.0
+
+        # Add fronds (branches)
+        num_fronds = 8
+        for i in range(num_fronds):
+            frond_y = -radius * 0.2 + (radius * 0.7) * (i / num_fronds)
+            frond_length = radius * 0.35 * (1 - i / num_fronds * 0.5)
+
+            dy = y - frond_y
+
+            # Right side frond
+            if x > 0 and x < frond_length and abs(dy - x * 0.5) < radius * 0.02 * (1 - x/frond_length):
+                frond_dist = x / frond_length
+                fern_value = max(fern_value, 1.0 - frond_dist * 0.3)
+
+            # Left side frond
+            if x < 0 and x > -frond_length and abs(dy + x * 0.5) < radius * 0.02 * (1 + x/frond_length):
+                frond_dist = abs(x) / frond_length
+                fern_value = max(fern_value, 1.0 - frond_dist * 0.3)
+
+        # Smooth falloff at edges
+        edge_falloff = max(0, 1 - (r - 0.7) / 0.2)
+        fern_value *= edge_falloff
+
+        return fern_value * fern_height
+
+    # Generate mesh
+    vertices_list = []
+
+    # Angular resolution
+    theta = np.linspace(0, 2 * np.pi, resolution, endpoint=False)
+
+    # Bottom center point
+    bottom_center_idx = 0
+    vertices_list.append([0, 0, 0])
+
+    # Bottom circle
+    bottom_circle_start = len(vertices_list)
+    for t in theta:
+        x = radius * np.cos(t)
+        y = radius * np.sin(t)
+        vertices_list.append([x, y, 0])
+
+    # Top surface with embossing
+    radial_steps = np.linspace(0, radius, num_radial)
+    top_vertices_grid = []
+
+    for r_step in radial_steps:
+        ring = []
+        for t in theta:
+            x = r_step * np.cos(t)
+            y = r_step * np.sin(t)
+            z = thickness + fern_function(x, y)
+            ring.append(len(vertices_list))
+            vertices_list.append([x, y, z])
+        top_vertices_grid.append(ring)
+
+    vertices_array = np.array(vertices_list)
+
+    # Create faces
+    faces_list = []
+
+    # Bottom surface
+    for i in range(resolution):
+        next_i = (i + 1) % resolution
+        faces_list.append([bottom_center_idx, bottom_circle_start + next_i, bottom_circle_start + i])
+
+    # Side walls
+    for i in range(resolution):
+        next_i = (i + 1) % resolution
+        bottom_v1 = bottom_circle_start + i
+        bottom_v2 = bottom_circle_start + next_i
+        top_v1 = top_vertices_grid[-1][i]
+        top_v2 = top_vertices_grid[-1][next_i]
+
+        faces_list.append([bottom_v1, top_v1, bottom_v2])
+        faces_list.append([bottom_v2, top_v1, top_v2])
+
+    # Top surface (embossed fern)
+    for r_idx in range(len(top_vertices_grid) - 1):
+        for t_idx in range(resolution):
+            next_t = (t_idx + 1) % resolution
+
+            v1 = top_vertices_grid[r_idx][t_idx]
+            v2 = top_vertices_grid[r_idx][next_t]
+            v3 = top_vertices_grid[r_idx + 1][t_idx]
+            v4 = top_vertices_grid[r_idx + 1][next_t]
+
+            faces_list.append([v1, v3, v2])
+            faces_list.append([v2, v3, v4])
+
+    faces_array = np.array(faces_list)
+
     # Create mesh
-    cube = mesh.Mesh(np.zeros(faces.shape[0], dtype=mesh.Mesh.dtype))
-    for i, face in enumerate(faces):
+    fern_coin = mesh.Mesh(np.zeros(len(faces_array), dtype=mesh.Mesh.dtype))
+    for i, face in enumerate(faces_array):
         for j in range(3):
-            cube.vectors[i][j] = vertices[face[j],:]
-    
-    return cube
+            fern_coin.vectors[i][j] = vertices_array[face[j]]
+
+    return fern_coin
 
 def estimate_output_size(input_mesh, point_distance=0.8):
     """
