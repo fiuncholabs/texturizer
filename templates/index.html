@@ -535,16 +535,45 @@
 
         function generateDefaultCoinPreview() {
             const diameter = parseFloat(document.getElementById('cubeSize').value);
+
+            // Generate the actual fern coin on the server and display it
+            const formData = new FormData();
+            formData.append('use_default_cube', 'true');
+            formData.append('cube_size', diameter);
+            formData.append('thickness', '0');  // No fuzzy skin for preview
+            formData.append('point_distance', '0.8');
+            formData.append('seed', '42');
+            formData.append('noise_type', 'classic');
+            formData.append('skip_bottom', 'false');
+
+            // Show loading state
+            setStatus('Generating coin preview...', 'processing');
+
+            fetch('/api/process', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Preview generation failed');
+                return response.blob();
+            })
+            .then(blob => blob.arrayBuffer())
+            .then(arrayBuffer => {
+                loadSTL(arrayBuffer);
+                setStatus('', '');
+            })
+            .catch(error => {
+                console.error('Preview generation error:', error);
+                // Fall back to simple cylinder on error
+                generateSimpleCylinderPreview(diameter);
+                setStatus('', '');
+            });
+        }
+
+        function generateSimpleCylinderPreview(diameter) {
             const thickness = diameter * 0.075;
-            // Generate a simple cylinder preview (approximation of coin)
-            // CylinderGeometry(radiusTop, radiusBottom, height, radialSegments, heightSegments, openEnded)
             const geometry = new THREE.CylinderGeometry(
-                diameter / 2,  // radiusTop
-                diameter / 2,  // radiusBottom
-                thickness,     // height
-                32,           // radialSegments
-                1,            // heightSegments
-                false         // openEnded = false (closed/solid cylinder with caps)
+                diameter / 2, diameter / 2, thickness, 32, 1, false
             );
             const material = new THREE.MeshPhongMaterial({
                 color: 0x00d4ff,
@@ -560,7 +589,6 @@
             currentMesh.position.set(0, thickness / 2, 0);
             scene.add(currentMesh);
 
-            // Adjust camera
             camera.position.set(diameter * 1.5, diameter * 1.5, diameter * 1.5);
             controls.target.set(0, 0, 0);
             controls.update();
