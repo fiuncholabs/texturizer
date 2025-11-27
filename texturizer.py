@@ -109,46 +109,128 @@ def generate_test_cube(size=20):
     """
     diameter = size  # Use size parameter as diameter
     thickness = size * 0.075  # Proportional thickness
-    fern_height = size * 0.02  # Proportional emboss height
-    resolution = max(60, int(size * 3))  # Higher resolution for larger coins
+    fern_height = size * 0.006  # Reduced emboss height (was 0.02, now 0.006 = 30% depth)
+    resolution = max(80, int(size * 4))  # Higher resolution for better detail
 
     radius = diameter / 2
-    num_radial = max(20, int(size))
+    num_radial = max(30, int(size * 1.5))  # More radial steps for smoother embossing
 
     def fern_function(x, y):
-        """Generate stylized fern pattern (Fiuncholabs mascot)"""
+        """Generate realistic fern pattern with detailed fronds (Fiuncholabs mascot)"""
         # Normalize coordinates
         r = np.sqrt(x**2 + y**2) / radius
 
-        # Main stem along y-axis
-        stem_width = 0.03
-        stem_dist = abs(x) / radius
-        on_stem = stem_dist < stem_width and y > -radius * 0.3 and y < radius * 0.6
+        # Return 0 if outside the fern area
+        if r > 0.85:
+            return 0.0
 
-        fern_value = 1.0 if on_stem else 0.0
+        fern_value = 0.0
 
-        # Add fronds (branches)
-        num_fronds = 8
+        # Main stem - curved slightly for natural look
+        stem_width = 0.025
+        stem_curve = x * 0.05  # Slight curve
+        stem_y_start = -radius * 0.4
+        stem_y_end = radius * 0.5
+
+        if y > stem_y_start and y < stem_y_end:
+            stem_center = stem_curve
+            stem_dist = abs(x - stem_center) / radius
+            if stem_dist < stem_width:
+                # Smooth stem edges
+                stem_strength = 1.0 - (stem_dist / stem_width) ** 2
+                fern_value = max(fern_value, stem_strength * 0.9)
+
+        # Generate realistic fronds with pinnae (leaflets)
+        num_fronds = 12  # More fronds for realism
+
         for i in range(num_fronds):
-            frond_y = -radius * 0.2 + (radius * 0.7) * (i / num_fronds)
-            frond_length = radius * 0.35 * (1 - i / num_fronds * 0.5)
+            # Frond position along stem
+            t = i / (num_fronds - 1)
+            frond_y = stem_y_start + (stem_y_end - stem_y_start) * t
+
+            # Frond length decreases toward top
+            frond_length = radius * 0.4 * (1 - t * 0.6) * (1 - (1 - t) ** 3)
+
+            # Frond angle (upward curve)
+            frond_angle = 0.6 + t * 0.2  # Steeper angle near base
 
             dy = y - frond_y
 
+            # Skip if not near this frond's y position
+            if abs(dy) > radius * 0.15:
+                continue
+
             # Right side frond
-            if x > 0 and x < frond_length and abs(dy - x * 0.5) < radius * 0.02 * (1 - x/frond_length):
-                frond_dist = x / frond_length
-                fern_value = max(fern_value, 1.0 - frond_dist * 0.3)
+            if x > 0 and x < frond_length:
+                # Main frond rachis (central axis)
+                frond_center_y = frond_y + x * frond_angle
+                dist_to_rachis = abs(y - frond_center_y) / radius
 
-            # Left side frond
-            if x < 0 and x > -frond_length and abs(dy + x * 0.5) < radius * 0.02 * (1 + x/frond_length):
-                frond_dist = abs(x) / frond_length
-                fern_value = max(fern_value, 1.0 - frond_dist * 0.3)
+                # Frond width tapers toward tip
+                frond_width = 0.015 * (1 - x / frond_length)
 
-        # Smooth falloff at edges
-        edge_falloff = max(0, 1 - (r - 0.7) / 0.2)
+                if dist_to_rachis < frond_width:
+                    # Distance along frond (0 to 1)
+                    frond_progress = x / frond_length
+                    rachis_strength = (1.0 - frond_progress * 0.5) * (1.0 - (dist_to_rachis / frond_width) ** 2)
+                    fern_value = max(fern_value, rachis_strength * 0.8)
+
+                # Add pinnae (leaflets along the frond)
+                num_pinnae = int(6 * (1 - frond_progress * 0.5))
+                for p in range(num_pinnae):
+                    pinna_x = x * (p + 1) / (num_pinnae + 1)
+                    pinna_y = frond_center_y
+                    pinna_length = radius * 0.08 * (1 - frond_progress) * (1 - p / num_pinnae * 0.5)
+
+                    # Alternating pinnae
+                    pinna_angle = 1.2 if p % 2 == 0 else 0.8
+
+                    dx_pinna = abs(x - pinna_x)
+                    dy_pinna = y - pinna_y - dx_pinna * pinna_angle
+
+                    if dx_pinna < pinna_length and abs(dy_pinna) < radius * 0.02:
+                        pinna_progress = dx_pinna / pinna_length
+                        pinna_strength = (1.0 - pinna_progress ** 2) * 0.6
+                        fern_value = max(fern_value, pinna_strength)
+
+            # Left side frond (mirror)
+            if x < 0 and x > -frond_length:
+                frond_center_y = frond_y + abs(x) * frond_angle
+                dist_to_rachis = abs(y - frond_center_y) / radius
+
+                frond_width = 0.015 * (1 - abs(x) / frond_length)
+
+                if dist_to_rachis < frond_width:
+                    frond_progress = abs(x) / frond_length
+                    rachis_strength = (1.0 - frond_progress * 0.5) * (1.0 - (dist_to_rachis / frond_width) ** 2)
+                    fern_value = max(fern_value, rachis_strength * 0.8)
+
+                # Add pinnae
+                num_pinnae = int(6 * (1 - frond_progress * 0.5))
+                for p in range(num_pinnae):
+                    pinna_x = x * (p + 1) / (num_pinnae + 1)
+                    pinna_y = frond_center_y
+                    pinna_length = radius * 0.08 * (1 - frond_progress) * (1 - p / num_pinnae * 0.5)
+
+                    pinna_angle = 1.2 if p % 2 == 0 else 0.8
+
+                    dx_pinna = abs(x - pinna_x)
+                    dy_pinna = y - pinna_y - dx_pinna * pinna_angle
+
+                    if dx_pinna < pinna_length and abs(dy_pinna) < radius * 0.02:
+                        pinna_progress = dx_pinna / pinna_length
+                        pinna_strength = (1.0 - pinna_progress ** 2) * 0.6
+                        fern_value = max(fern_value, pinna_strength)
+
+        # Smooth global falloff toward edges
+        edge_falloff = 1.0
+        if r > 0.7:
+            edge_falloff = 1.0 - ((r - 0.7) / 0.15) ** 2
+            edge_falloff = max(0.0, edge_falloff)
+
         fern_value *= edge_falloff
 
+        # Apply embossing with smooth gradient
         return fern_value * fern_height
 
     # Generate mesh
