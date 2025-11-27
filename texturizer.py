@@ -162,16 +162,17 @@ def generate_test_cube(size=20):
 
             # Right side frond
             if x > 0 and x < frond_length:
+                # Distance along frond (0 to 1)
+                frond_progress = x / frond_length
+
                 # Main frond rachis (central axis)
                 frond_center_y = frond_y + x * frond_angle
                 dist_to_rachis = abs(y - frond_center_y) / radius
 
                 # Frond width tapers toward tip
-                frond_width = 0.015 * (1 - x / frond_length)
+                frond_width = 0.015 * (1 - frond_progress)
 
                 if dist_to_rachis < frond_width:
-                    # Distance along frond (0 to 1)
-                    frond_progress = x / frond_length
                     rachis_strength = (1.0 - frond_progress * 0.5) * (1.0 - (dist_to_rachis / frond_width) ** 2)
                     fern_value = max(fern_value, rachis_strength * 0.8)
 
@@ -195,13 +196,15 @@ def generate_test_cube(size=20):
 
             # Left side frond (mirror)
             if x < 0 and x > -frond_length:
+                # Distance along frond (0 to 1)
+                frond_progress = abs(x) / frond_length
+
                 frond_center_y = frond_y + abs(x) * frond_angle
                 dist_to_rachis = abs(y - frond_center_y) / radius
 
-                frond_width = 0.015 * (1 - abs(x) / frond_length)
+                frond_width = 0.015 * (1 - frond_progress)
 
                 if dist_to_rachis < frond_width:
-                    frond_progress = abs(x) / frond_length
                     rachis_strength = (1.0 - frond_progress * 0.5) * (1.0 - (dist_to_rachis / frond_width) ** 2)
                     fern_value = max(fern_value, rachis_strength * 0.8)
 
