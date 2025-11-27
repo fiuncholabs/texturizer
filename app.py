@@ -134,8 +134,11 @@ def validate_parameters(f):
             cube_size = float(request.form.get('cube_size', 20))
 
             # Sanity checks
-            if not (0.05 <= thickness <= 5.0):
-                return jsonify({'error': 'Thickness must be between 0.05 and 5.0 mm'}), 400
+            # Allow thickness=0 for preview requests (returns unprocessed mesh)
+            if not (0.0 <= thickness <= 5.0):
+                return jsonify({'error': 'Thickness must be between 0.0 and 5.0 mm'}), 400
+            if thickness > 0 and thickness < 0.05:
+                return jsonify({'error': 'Thickness must be 0 (no processing) or between 0.05 and 5.0 mm'}), 400
 
             if not (0.1 <= point_distance <= 10.0):
                 return jsonify({'error': 'Point distance must be between 0.1 and 10.0 mm'}), 400
@@ -350,58 +353,63 @@ def process_stl():
         # Log mesh info
         app.logger.info(f"Input mesh has {len(input_mesh.vectors)} triangles")
 
-        # Check if processing is feasible
-        max_triangles = int(os.environ.get('MAX_OUTPUT_TRIANGLES', 20_000_000))
-        max_memory_mb = int(os.environ.get('MAX_MEMORY_MB', 4096))
-        max_file_size_mb = int(os.environ.get('MAX_OUTPUT_FILE_SIZE_MB', 500))
+        # If thickness is 0, skip processing and return the input mesh as-is (for preview)
+        if thickness == 0:
+            app.logger.info("Thickness is 0 - returning unprocessed mesh for preview")
+            output_mesh = input_mesh
+        else:
+            # Check if processing is feasible
+            max_triangles = int(os.environ.get('MAX_OUTPUT_TRIANGLES', 20_000_000))
+            max_memory_mb = int(os.environ.get('MAX_MEMORY_MB', 4096))
+            max_file_size_mb = int(os.environ.get('MAX_OUTPUT_FILE_SIZE_MB', 500))
 
-        feasibility = check_processing_feasibility(
-            input_mesh,
-            point_distance=point_distance,
-            max_triangles=max_triangles,
-            max_memory_mb=max_memory_mb,
-            max_file_size_mb=max_file_size_mb
-        )
-
-        # Log estimates
-        estimates = feasibility['estimates']
-        app.logger.info(f"Processing estimates: {estimates['estimated_triangles']:,} triangles, "
-                       f"{estimates['estimated_file_size_mb']:.1f}MB file, "
-                       f"{estimates['estimated_memory_mb']:.0f}MB memory")
-
-        # Reject if not feasible
-        if not feasibility['feasible']:
-            app.logger.warning(f"Processing rejected: {feasibility['reason']}")
-            error_response = {
-                'error': feasibility['reason'],
-                'suggestions': feasibility['suggestions'],
-                'estimates': estimates
-            }
-            return jsonify(error_response), 400
-
-        # Apply fuzzy skin
-        try:
-            output_mesh = apply_fuzzy_skin(
+            feasibility = check_processing_feasibility(
                 input_mesh,
-                thickness=thickness,
                 point_distance=point_distance,
-                seed=seed,
-                noise_type=noise_type,
-                noise_scale=noise_scale,
-                noise_octaves=noise_octaves,
-                noise_persistence=noise_persistence,
-                skip_bottom=skip_bottom
+                max_triangles=max_triangles,
+                max_memory_mb=max_memory_mb,
+                max_file_size_mb=max_file_size_mb
             )
-            app.logger.info(f"Output mesh has {len(output_mesh.vectors)} triangles")
-        except MemoryError:
-            app.logger.error("Out of memory during processing")
-            return jsonify({'error': 'Out of memory. Try increasing point_distance or using a smaller mesh.'}), 500
-        except ValueError as ve:
-            app.logger.error(f"Processing error: {str(ve)}")
-            return jsonify({'error': f'Processing error: {str(ve)}'}), 500
-        except Exception as e:
-            app.logger.error(f"Unexpected error during processing: {str(e)}")
-            return jsonify({'error': f'Processing failed: {str(e)}'}), 500
+
+            # Log estimates
+            estimates = feasibility['estimates']
+            app.logger.info(f"Processing estimates: {estimates['estimated_triangles']:,} triangles, "
+                           f"{estimates['estimated_file_size_mb']:.1f}MB file, "
+                           f"{estimates['estimated_memory_mb']:.0f}MB memory")
+
+            # Reject if not feasible
+            if not feasibility['feasible']:
+                app.logger.warning(f"Processing rejected: {feasibility['reason']}")
+                error_response = {
+                    'error': feasibility['reason'],
+                    'suggestions': feasibility['suggestions'],
+                    'estimates': estimates
+                }
+                return jsonify(error_response), 400
+
+            # Apply fuzzy skin
+            try:
+                output_mesh = apply_fuzzy_skin(
+                    input_mesh,
+                    thickness=thickness,
+                    point_distance=point_distance,
+                    seed=seed,
+                    noise_type=noise_type,
+                    noise_scale=noise_scale,
+                    noise_octaves=noise_octaves,
+                    noise_persistence=noise_persistence,
+                    skip_bottom=skip_bottom
+                )
+                app.logger.info(f"Output mesh has {len(output_mesh.vectors)} triangles")
+            except MemoryError:
+                app.logger.error("Out of memory during processing")
+                return jsonify({'error': 'Out of memory. Try increasing point_distance or using a smaller mesh.'}), 500
+            except ValueError as ve:
+                app.logger.error(f"Processing error: {str(ve)}")
+                return jsonify({'error': f'Processing error: {str(ve)}'}), 500
+            except Exception as e:
+                app.logger.error(f"Unexpected error during processing: {str(e)}")
+                return jsonify({'error': f'Processing failed: {str(e)}'}), 500
 
         # Save to temporary file
         with tempfile.NamedTemporaryFile(suffix='.stl', delete=False) as tmp_out:
