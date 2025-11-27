@@ -41,6 +41,9 @@ class Config:
     # Health check
     HEALTH_CHECK_ENABLED = True
 
+    # Analytics
+    GA_MEASUREMENT_ID = os.environ.get('GA_MEASUREMENT_ID', None)  # Google Analytics Measurement ID
+
 
 class DevelopmentConfig(Config):
     """Development configuration"""

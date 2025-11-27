@@ -4,6 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>STL Fuzzy Skin Texturizer</title>
+
+    <!-- Google Analytics -->
+    {% if config.GA_MEASUREMENT_ID %}
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ config.GA_MEASUREMENT_ID }}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', '{{ config.GA_MEASUREMENT_ID }}');
+    </script>
+    {% endif %}
+
     <style>
         * {
             box-sizing: border-box;
@@ -339,6 +351,13 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
 
     <script>
+        // Google Analytics helper function
+        function trackEvent(eventName, eventParams = {}) {
+            if (typeof gtag !== 'undefined') {
+                gtag('event', eventName, eventParams);
+            }
+        }
+
         // Three.js setup
         let scene, camera, renderer, controls, currentMesh;
         const viewerContainer = document.getElementById('viewer');
@@ -492,6 +511,9 @@
                 processBtn.disabled = false;
                 uploadedFile = null;
 
+                // Track default cube usage
+                trackEvent('default_cube_selected');
+
                 // Generate and show default cube preview
                 generateDefaultCubePreview();
             } else {
@@ -545,6 +567,11 @@
                 fileNameDisplay.textContent = file.name;
                 processBtn.disabled = false;
 
+                // Track file upload
+                trackEvent('file_uploaded', {
+                    file_size_category: file.size < 1024*1024 ? 'small' : file.size < 10*1024*1024 ? 'medium' : 'large'
+                });
+
                 // Load preview
                 const reader = new FileReader();
                 reader.onload = (event) => {
@@ -570,6 +597,11 @@
         downloadBtn.addEventListener('click', () => {
             if (!processedBlob) return;
 
+            // Track download
+            trackEvent('file_downloaded', {
+                file_name: processedFilename
+            });
+
             const url = URL.createObjectURL(processedBlob);
             const a = document.createElement('a');
             a.href = url;
@@ -587,6 +619,13 @@
             processBtn.disabled = true;
             processingStartTime = performance.now();
             setStatus('Processing... This may take a moment.', 'processing');
+
+            // Track processing started
+            const noiseTypeValue = noiseType.value;
+            trackEvent('processing_started', {
+                input_type: usingDefaultCube ? 'cube' : 'file',
+                noise_type: noiseTypeValue
+            });
 
             const formData = new FormData();
 
@@ -639,8 +678,22 @@
                 // Calculate processing time
                 const processingTime = ((performance.now() - processingStartTime) / 1000).toFixed(2);
                 setStatus(`Processing complete in ${processingTime}s! Click Download to save.`, 'success');
+
+                // Track successful processing
+                trackEvent('processing_success', {
+                    input_type: usingDefaultCube ? 'cube' : 'file',
+                    noise_type: noiseTypeValue,
+                    processing_time: processingTime
+                });
             } catch (error) {
                 setStatus('Error: ' + error.message, 'error');
+
+                // Track processing error
+                trackEvent('processing_error', {
+                    input_type: usingDefaultCube ? 'cube' : 'file',
+                    noise_type: noiseTypeValue,
+                    error_message: error.message
+                });
             } finally {
                 processBtn.disabled = false;
             }

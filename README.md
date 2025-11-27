@@ -463,8 +463,22 @@ Your support helps maintain and improve this project!
 
 ---
 
+## Analytics (Optional)
+
+The web application supports Google Analytics 4 for tracking usage patterns. To enable:
+
+1. Create a Google Analytics account and get your Measurement ID
+2. Set `GA_MEASUREMENT_ID=G-XXXXXXXXXX` in your environment variables
+3. See [ANALYTICS.md](ANALYTICS.md) for complete setup instructions
+
+**What's tracked:** Pageviews, processing requests, noise type usage, success/error rates
+**Privacy-friendly:** No personal information, IP anonymization enabled by default
+
+---
+
 ## Get Help
 
 - 📖 [Deployment Guide](DEPLOYMENT.md)
+- 📊 [Analytics Setup](ANALYTICS.md)
 - 🐛 [Report Issues](https://github.com/your-username/texturizer/issues)
 - 💬 [Ask Questions](https://github.com/your-username/texturizer/discussions)
