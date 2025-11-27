@@ -3,6 +3,7 @@
 A web application and command-line tool for applying fuzzy skin texture to STL files, similar to the "fuzzy skin" feature in OrcaSlicer. Supports multiple noise types and offers both file upload and default cube generation.
 
 ![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20this%20project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/igloopup)
 
 ## Features
 
@@ -452,7 +453,17 @@ This project is provided as-is for educational and personal use.
 
 ---
 
-## Support
+## Support This Project
+
+If you find this tool useful, please consider supporting its development:
+
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/igloopup)
+
+Your support helps maintain and improve this project!
+
+---
+
+## Get Help
 
 - 📖 [Deployment Guide](DEPLOYMENT.md)
 - 🐛 [Report Issues](https://github.com/your-username/texturizer/issues)
