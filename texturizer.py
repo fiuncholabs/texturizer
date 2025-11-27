@@ -128,6 +128,151 @@ def generate_test_cube(size=20):
     
     return cube
 
+def estimate_output_size(input_mesh, point_distance=0.8):
+    """
+    Estimate the output STL file size and triangle count before processing.
+
+    Args:
+        input_mesh: numpy-stl mesh object
+        point_distance: Target distance between texture points (mm)
+
+    Returns:
+        dict with keys:
+            - estimated_triangles: Estimated number of output triangles
+            - estimated_vertices: Estimated number of unique vertices
+            - estimated_file_size_mb: Estimated binary STL file size in MB
+            - estimated_memory_mb: Estimated peak memory usage in MB
+            - input_triangles: Number of input triangles
+            - avg_edge_length: Average edge length in input mesh
+            - subdivision_factor: Estimated subdivision factor
+    """
+    # Sample edge lengths from input mesh
+    sample_size = min(100, len(input_mesh.vectors))
+    sample_edges = []
+
+    for i in range(sample_size):
+        v0, v1, v2 = input_mesh.vectors[i]
+        sample_edges.append(np.linalg.norm(v1 - v0))
+        sample_edges.append(np.linalg.norm(v2 - v1))
+        sample_edges.append(np.linalg.norm(v0 - v2))
+
+    avg_edge = np.mean(sample_edges)
+
+    # Calculate subdivision factor
+    # Each edge subdivision splits a triangle into 4 triangles
+    # Subdivision level = log4(avg_edge / point_distance)
+    subdivision_factor = (avg_edge / point_distance) ** 2
+
+    # Estimate output triangle count
+    input_triangles = len(input_mesh.vectors)
+    estimated_triangles = int(input_triangles * subdivision_factor)
+
+    # Estimate unique vertices (approximately triangles / 2 for a closed mesh)
+    estimated_vertices = int(estimated_triangles / 2)
+
+    # Binary STL file size calculation:
+    # Header: 80 bytes
+    # Triangle count: 4 bytes
+    # Per triangle: 50 bytes (12 floats * 4 bytes + 2 bytes attribute)
+    estimated_file_size_bytes = 84 + (estimated_triangles * 50)
+    estimated_file_size_mb = estimated_file_size_bytes / (1024 * 1024)
+
+    # Memory usage estimation:
+    # - Triangle buffer: triangles * 3 vertices * 3 coords * 4 bytes (float32)
+    # - Mesh object: triangles * dtype size (~96 bytes per triangle)
+    # - Vertex deduplication: vertices * 3 coords * 8 bytes (float64)
+    # - Normal calculations: vertices * 3 * 8 bytes
+    # - Overhead and temporary arrays: ~2x multiplier
+    triangle_buffer_mb = (estimated_triangles * 3 * 3 * 4) / (1024 * 1024)
+    mesh_object_mb = (estimated_triangles * 96) / (1024 * 1024)
+    vertex_processing_mb = (estimated_vertices * 3 * 8 * 2) / (1024 * 1024)
+    estimated_memory_mb = (triangle_buffer_mb + mesh_object_mb + vertex_processing_mb) * 2
+
+    return {
+        'estimated_triangles': estimated_triangles,
+        'estimated_vertices': estimated_vertices,
+        'estimated_file_size_mb': round(estimated_file_size_mb, 2),
+        'estimated_memory_mb': round(estimated_memory_mb, 2),
+        'input_triangles': input_triangles,
+        'avg_edge_length': round(avg_edge, 2),
+        'subdivision_factor': round(subdivision_factor, 2)
+    }
+
+
+def check_processing_feasibility(input_mesh, point_distance=0.8,
+                                 max_triangles=20_000_000,
+                                 max_memory_mb=4096,
+                                 max_file_size_mb=500):
+    """
+    Check if processing is feasible with given constraints.
+
+    Args:
+        input_mesh: numpy-stl mesh object
+        point_distance: Target distance between texture points (mm)
+        max_triangles: Maximum allowed output triangles (default: 20 million)
+        max_memory_mb: Maximum allowed memory usage in MB (default: 4GB)
+        max_file_size_mb: Maximum allowed output file size in MB (default: 500MB)
+
+    Returns:
+        dict with keys:
+            - feasible: Boolean indicating if processing is feasible
+            - reason: String explaining why not feasible (if applicable)
+            - estimates: Dict from estimate_output_size()
+            - suggestions: List of suggestions to make processing feasible
+    """
+    estimates = estimate_output_size(input_mesh, point_distance)
+
+    feasible = True
+    reason = None
+    suggestions = []
+
+    # Check triangle count
+    if estimates['estimated_triangles'] > max_triangles:
+        feasible = False
+        reason = f"Estimated output ({estimates['estimated_triangles']:,} triangles) exceeds maximum ({max_triangles:,} triangles)"
+
+        # Calculate suggested point_distance
+        suggested_factor = max_triangles / estimates['input_triangles']
+        suggested_point_distance = estimates['avg_edge_length'] / math.sqrt(suggested_factor)
+        suggestions.append(f"Increase point_distance to at least {suggested_point_distance:.2f}mm")
+
+    # Check memory usage
+    if estimates['estimated_memory_mb'] > max_memory_mb:
+        if not feasible:
+            suggestions.append(f"OR reduce mesh complexity (current memory estimate: {estimates['estimated_memory_mb']:.0f}MB)")
+        else:
+            feasible = False
+            reason = f"Estimated memory usage ({estimates['estimated_memory_mb']:.0f}MB) exceeds maximum ({max_memory_mb}MB)"
+
+            # Calculate suggested point_distance for memory
+            memory_ratio = max_memory_mb / estimates['estimated_memory_mb']
+            suggested_point_distance = point_distance / math.sqrt(memory_ratio)
+            suggestions.append(f"Increase point_distance to at least {suggested_point_distance:.2f}mm")
+
+    # Check file size
+    if estimates['estimated_file_size_mb'] > max_file_size_mb:
+        if not feasible:
+            suggestions.append(f"Output file size will be ~{estimates['estimated_file_size_mb']:.0f}MB")
+        else:
+            feasible = False
+            reason = f"Estimated file size ({estimates['estimated_file_size_mb']:.0f}MB) exceeds maximum ({max_file_size_mb}MB)"
+
+            # Calculate suggested point_distance for file size
+            size_ratio = max_file_size_mb / estimates['estimated_file_size_mb']
+            suggested_point_distance = point_distance / math.sqrt(size_ratio)
+            suggestions.append(f"Increase point_distance to at least {suggested_point_distance:.2f}mm")
+
+    if not feasible and not suggestions:
+        suggestions.append("Try using a smaller input mesh or increasing point_distance")
+
+    return {
+        'feasible': feasible,
+        'reason': reason,
+        'estimates': estimates,
+        'suggestions': suggestions
+    }
+
+
 def subdivide_triangle(v0, v1, v2, max_edge_length):
     """
     Recursively subdivide a triangle until all edges are below max_edge_length.

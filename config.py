@@ -19,6 +19,11 @@ class Config:
     PROCESSING_TIMEOUT = int(os.environ.get('PROCESSING_TIMEOUT', 600))  # 10 minutes
     MAX_WORKERS = int(os.environ.get('MAX_WORKERS', 1))  # Number of concurrent processing jobs
 
+    # Output constraints
+    MAX_OUTPUT_TRIANGLES = int(os.environ.get('MAX_OUTPUT_TRIANGLES', 20_000_000))  # 20 million triangles
+    MAX_MEMORY_MB = int(os.environ.get('MAX_MEMORY_MB', 4096))  # 4GB
+    MAX_OUTPUT_FILE_SIZE_MB = int(os.environ.get('MAX_OUTPUT_FILE_SIZE_MB', 500))  # 500MB
+
     # Rate limiting
     RATELIMIT_ENABLED = os.environ.get('RATELIMIT_ENABLED', 'true').lower() == 'true'
     RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')

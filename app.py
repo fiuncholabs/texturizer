@@ -23,6 +23,8 @@ import numpy as np
 from texturizer import (
     apply_fuzzy_skin,
     generate_test_cube,
+    estimate_output_size,
+    check_processing_feasibility,
     NOISE_TYPES,
     NOISE_CLASSIC,
     NOISE_AVAILABLE
@@ -184,6 +186,80 @@ def get_info():
     })
 
 
+@app.route('/api/estimate', methods=['POST'])
+@log_request
+@validate_parameters
+def estimate_stl():
+    """
+    Estimate output size and feasibility without processing.
+    Useful for preview before processing large files.
+    """
+    tmp_input_path = None
+
+    try:
+        # Get parameters
+        point_distance = float(request.form.get('point_distance', 0.8))
+        use_default_cube = request.form.get('use_default_cube', 'false').lower() == 'true'
+        cube_size = float(request.form.get('cube_size', 20))
+
+        # Load mesh
+        if use_default_cube:
+            input_mesh = generate_test_cube(cube_size)
+        else:
+            if 'file' not in request.files:
+                return jsonify({'error': 'No file uploaded and default cube not selected'}), 400
+
+            file = request.files['file']
+            if file.filename == '' or not file.filename.lower().endswith('.stl'):
+                return jsonify({'error': 'Valid STL file required'}), 400
+
+            # Save and load file
+            with tempfile.NamedTemporaryFile(suffix='.stl', delete=False) as tmp_in:
+                file.save(tmp_in.name)
+                tmp_input_path = tmp_in.name
+
+            try:
+                input_mesh = mesh.Mesh.from_file(tmp_input_path)
+            except Exception as e:
+                return jsonify({'error': f'Invalid STL file: {str(e)}'}), 400
+
+        # Get feasibility check
+        max_triangles = int(os.environ.get('MAX_OUTPUT_TRIANGLES', 20_000_000))
+        max_memory_mb = int(os.environ.get('MAX_MEMORY_MB', 4096))
+        max_file_size_mb = int(os.environ.get('MAX_OUTPUT_FILE_SIZE_MB', 500))
+
+        feasibility = check_processing_feasibility(
+            input_mesh,
+            point_distance=point_distance,
+            max_triangles=max_triangles,
+            max_memory_mb=max_memory_mb,
+            max_file_size_mb=max_file_size_mb
+        )
+
+        return jsonify({
+            'feasible': feasibility['feasible'],
+            'reason': feasibility['reason'],
+            'estimates': feasibility['estimates'],
+            'suggestions': feasibility['suggestions'],
+            'limits': {
+                'max_triangles': max_triangles,
+                'max_memory_mb': max_memory_mb,
+                'max_file_size_mb': max_file_size_mb
+            }
+        })
+
+    except Exception as e:
+        app.logger.error(f"Estimation error: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Failed to estimate output size'}), 500
+
+    finally:
+        if tmp_input_path and os.path.exists(tmp_input_path):
+            try:
+                os.unlink(tmp_input_path)
+            except Exception:
+                pass
+
+
 @app.route('/api/process', methods=['POST'])
 @log_request
 @validate_parameters
@@ -273,6 +349,35 @@ def process_stl():
 
         # Log mesh info
         app.logger.info(f"Input mesh has {len(input_mesh.vectors)} triangles")
+
+        # Check if processing is feasible
+        max_triangles = int(os.environ.get('MAX_OUTPUT_TRIANGLES', 20_000_000))
+        max_memory_mb = int(os.environ.get('MAX_MEMORY_MB', 4096))
+        max_file_size_mb = int(os.environ.get('MAX_OUTPUT_FILE_SIZE_MB', 500))
+
+        feasibility = check_processing_feasibility(
+            input_mesh,
+            point_distance=point_distance,
+            max_triangles=max_triangles,
+            max_memory_mb=max_memory_mb,
+            max_file_size_mb=max_file_size_mb
+        )
+
+        # Log estimates
+        estimates = feasibility['estimates']
+        app.logger.info(f"Processing estimates: {estimates['estimated_triangles']:,} triangles, "
+                       f"{estimates['estimated_file_size_mb']:.1f}MB file, "
+                       f"{estimates['estimated_memory_mb']:.0f}MB memory")
+
+        # Reject if not feasible
+        if not feasibility['feasible']:
+            app.logger.warning(f"Processing rejected: {feasibility['reason']}")
+            error_response = {
+                'error': feasibility['reason'],
+                'suggestions': feasibility['suggestions'],
+                'estimates': estimates
+            }
+            return jsonify(error_response), 400
 
         # Apply fuzzy skin
         try:

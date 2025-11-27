@@ -12,6 +12,7 @@ A web application and command-line tool for applying fuzzy skin texture to STL f
 - 🔧 **Adjustable parameters** (thickness, point distance, seed, etc.)
 - 👁️ **Real-time 3D preview** with Three.js viewer
 - 🔄 **Model rotation controls** (X, Y, Z axes)
+- 📊 **Output size estimation** (prevents memory issues before processing)
 - 🚀 **Production-ready** with security features
 - 📦 **Easy deployment** to multiple platforms
 
@@ -220,6 +221,17 @@ Health check endpoint (returns JSON status)
 
 ### `GET /api/info`
 Get available noise types and default parameters
+
+### `POST /api/estimate`
+Estimate output size and feasibility before processing (fast, no actual processing)
+
+**Parameters (form-data):**
+- `file`: STL file (optional if using default cube)
+- `use_default_cube`: true/false
+- `cube_size`: Size in mm
+- `point_distance`: Point spacing
+
+**Returns:** Estimated triangles, file size, memory usage, and feasibility check
 
 ### `POST /api/process`
 Process STL file with fuzzy skin texture
