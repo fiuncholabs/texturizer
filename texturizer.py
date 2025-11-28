@@ -98,218 +98,212 @@ class NoiseGenerator:
 
 def generate_test_cube(size=20):
     """
-    Generate default test object: Fiuncholabs Fern Coin
-    A coin-like piece with embossed fern design (Fiuncholabs branding)
+    Generate default test object: Fiuncholabs Beaker Card
+    A rectangular card with embossed beaker design (Fiuncholabs branding)
 
     Args:
-        size: Diameter of the coin (default 20mm for backward compatibility)
+        size: Reference dimension for the card (default 20mm)
+              Card will be size × (size * 1.5) × (size * 0.1)
 
     Returns:
         mesh.Mesh object
     """
-    diameter = size  # Use size parameter as diameter
-    thickness = size * 0.075  # Proportional thickness
-    fern_height = size * 0.006  # Reduced emboss height (was 0.02, now 0.006 = 30% depth)
-    resolution = max(80, int(size * 4))  # Higher resolution for better detail
+    # Card dimensions
+    width = size * 1.5  # 30mm for size=20
+    height = size  # 20mm for size=20
+    thickness = size * 0.1  # 2mm for size=20
+    emboss_height = size * 0.04  # 0.8mm embossing (much more visible than fern)
 
-    radius = diameter / 2
-    num_radial = max(30, int(size * 1.5))  # More radial steps for smoother embossing
+    # Resolution for mesh
+    width_segments = max(40, int(width * 2))
+    height_segments = max(30, int(height * 2))
 
-    def fern_function(x, y):
-        """Generate realistic fern pattern with detailed fronds (Fiuncholabs mascot)"""
-        # Normalize coordinates
-        r = np.sqrt(x**2 + y**2) / radius
+    def beaker_function(x, y):
+        """Generate stylized beaker design for Fiuncholabs branding"""
+        # Normalize coordinates to card dimensions
+        # x ranges from -width/2 to +width/2
+        # y ranges from -height/2 to +height/2
 
-        # Return 0 if outside the fern area
-        if r > 0.85:
-            return 0.0
+        # Normalize to 0-1 range
+        nx = (x + width / 2) / width  # 0 at left, 1 at right
+        ny = (y + height / 2) / height  # 0 at bottom, 1 at top
 
-        fern_value = 0.0
+        beaker_value = 0.0
 
-        # Main stem - curved slightly for natural look
-        stem_width = 0.025
-        stem_curve = x * 0.05  # Slight curve
-        stem_y_start = -radius * 0.4
-        stem_y_end = radius * 0.5
+        # Beaker dimensions (normalized)
+        beaker_width = 0.4  # Width at top
+        beaker_bottom_width = 0.3  # Width at bottom (tapers)
+        beaker_height = 0.7  # Total height of beaker
+        beaker_base = 0.15  # Y position of beaker bottom
 
-        if y > stem_y_start and y < stem_y_end:
-            stem_center = stem_curve
-            stem_dist = abs(x - stem_center) / radius
-            if stem_dist < stem_width:
-                # Smooth stem edges
-                stem_strength = 1.0 - (stem_dist / stem_width) ** 2
-                fern_value = max(fern_value, stem_strength * 0.9)
+        # Center the beaker
+        beaker_cx = 0.5  # Center x
 
-        # Generate realistic fronds with pinnae (leaflets)
-        num_fronds = 12  # More fronds for realism
+        # Beaker body (tapered trapezoid)
+        if beaker_base <= ny <= beaker_base + beaker_height:
+            # Progress from bottom (0) to top (1)
+            progress = (ny - beaker_base) / beaker_height
 
-        for i in range(num_fronds):
-            # Frond position along stem
-            t = i / (num_fronds - 1)
-            frond_y = stem_y_start + (stem_y_end - stem_y_start) * t
+            # Width at this height (linear taper)
+            current_width = beaker_bottom_width + (beaker_width - beaker_bottom_width) * progress
+            half_width = current_width / 2
 
-            # Frond length decreases toward top
-            frond_length = radius * 0.4 * (1 - t * 0.6) * (1 - (1 - t) ** 3)
+            # Distance from center
+            dx = abs(nx - beaker_cx)
 
-            # Frond angle (upward curve)
-            frond_angle = 0.6 + t * 0.2  # Steeper angle near base
+            # Beaker walls (with thickness)
+            wall_thickness = 0.02
+            if half_width - wall_thickness <= dx <= half_width:
+                # Calculate smooth wall strength
+                wall_pos = (half_width - dx) / wall_thickness
+                beaker_value = max(beaker_value, wall_pos)
 
-            dy = y - frond_y
+        # Beaker bottom (base)
+        if beaker_base <= ny <= beaker_base + 0.03:
+            half_width = beaker_bottom_width / 2
+            dx = abs(nx - beaker_cx)
+            if dx <= half_width:
+                beaker_value = max(beaker_value, 1.0)
 
-            # Skip if not near this frond's y position
-            if abs(dy) > radius * 0.15:
-                continue
+        # Measurement marks on the side (3 marks)
+        for mark_num in range(3):
+            mark_y = beaker_base + beaker_height * (0.25 + mark_num * 0.25)
+            if abs(ny - mark_y) < 0.01:
+                progress = (mark_y - beaker_base) / beaker_height
+                current_width = beaker_bottom_width + (beaker_width - beaker_bottom_width) * progress
+                half_width = current_width / 2
 
-            # Right side frond
-            if x > 0 and x < frond_length:
-                # Distance along frond (0 to 1)
-                frond_progress = x / frond_length
+                # Mark on left side
+                mark_x_left = beaker_cx - half_width * 0.8
+                if abs(nx - mark_x_left) < 0.05:
+                    beaker_value = max(beaker_value, 0.7)
 
-                # Main frond rachis (central axis)
-                frond_center_y = frond_y + x * frond_angle
-                dist_to_rachis = abs(y - frond_center_y) / radius
+                # Mark on right side
+                mark_x_right = beaker_cx + half_width * 0.8
+                if abs(nx - mark_x_right) < 0.05:
+                    beaker_value = max(beaker_value, 0.7)
 
-                # Frond width tapers toward tip
-                frond_width = 0.015 * (1 - frond_progress)
+        # Liquid inside (wavy top)
+        liquid_top = beaker_base + beaker_height * 0.6
+        # Add slight wave to liquid surface
+        wave = 0.015 * np.sin(nx * 10)
+        if beaker_base + 0.03 <= ny <= liquid_top + wave:
+            progress = (ny - beaker_base) / beaker_height
+            current_width = beaker_bottom_width + (beaker_width - beaker_bottom_width) * progress
+            half_width = current_width / 2
+            dx = abs(nx - beaker_cx)
 
-                if dist_to_rachis < frond_width:
-                    rachis_strength = (1.0 - frond_progress * 0.5) * (1.0 - (dist_to_rachis / frond_width) ** 2)
-                    fern_value = max(fern_value, rachis_strength * 0.8)
+            if dx < half_width - 0.02:  # Inside the beaker
+                # Create gradient for liquid
+                liquid_strength = 0.5
+                beaker_value = max(beaker_value, liquid_strength)
 
-                # Add pinnae (leaflets along the frond)
-                num_pinnae = int(6 * (1 - frond_progress * 0.5))
-                for p in range(num_pinnae):
-                    pinna_x = x * (p + 1) / (num_pinnae + 1)
-                    pinna_y = frond_center_y
-                    pinna_length = radius * 0.08 * (1 - frond_progress) * (1 - p / num_pinnae * 0.5)
+        # Smooth the embossing
+        return beaker_value * emboss_height
 
-                    # Alternating pinnae
-                    pinna_angle = 1.2 if p % 2 == 0 else 0.8
-
-                    dx_pinna = abs(x - pinna_x)
-                    dy_pinna = y - pinna_y - dx_pinna * pinna_angle
-
-                    if dx_pinna < pinna_length and abs(dy_pinna) < radius * 0.02:
-                        pinna_progress = dx_pinna / pinna_length
-                        pinna_strength = (1.0 - pinna_progress ** 2) * 0.6
-                        fern_value = max(fern_value, pinna_strength)
-
-            # Left side frond (mirror)
-            if x < 0 and x > -frond_length:
-                # Distance along frond (0 to 1)
-                frond_progress = abs(x) / frond_length
-
-                frond_center_y = frond_y + abs(x) * frond_angle
-                dist_to_rachis = abs(y - frond_center_y) / radius
-
-                frond_width = 0.015 * (1 - frond_progress)
-
-                if dist_to_rachis < frond_width:
-                    rachis_strength = (1.0 - frond_progress * 0.5) * (1.0 - (dist_to_rachis / frond_width) ** 2)
-                    fern_value = max(fern_value, rachis_strength * 0.8)
-
-                # Add pinnae
-                num_pinnae = int(6 * (1 - frond_progress * 0.5))
-                for p in range(num_pinnae):
-                    pinna_x = x * (p + 1) / (num_pinnae + 1)
-                    pinna_y = frond_center_y
-                    pinna_length = radius * 0.08 * (1 - frond_progress) * (1 - p / num_pinnae * 0.5)
-
-                    pinna_angle = 1.2 if p % 2 == 0 else 0.8
-
-                    dx_pinna = abs(x - pinna_x)
-                    dy_pinna = y - pinna_y - dx_pinna * pinna_angle
-
-                    if dx_pinna < pinna_length and abs(dy_pinna) < radius * 0.02:
-                        pinna_progress = dx_pinna / pinna_length
-                        pinna_strength = (1.0 - pinna_progress ** 2) * 0.6
-                        fern_value = max(fern_value, pinna_strength)
-
-        # Smooth global falloff toward edges
-        edge_falloff = 1.0
-        if r > 0.7:
-            edge_falloff = 1.0 - ((r - 0.7) / 0.15) ** 2
-            edge_falloff = max(0.0, edge_falloff)
-
-        fern_value *= edge_falloff
-
-        # Apply embossing with smooth gradient
-        return fern_value * fern_height
-
-    # Generate mesh
+    # Generate rectangular card mesh
     vertices_list = []
 
-    # Angular resolution
-    theta = np.linspace(0, 2 * np.pi, resolution, endpoint=False)
+    # Create grid of vertices
+    x_values = np.linspace(-width / 2, width / 2, width_segments)
+    y_values = np.linspace(-height / 2, height / 2, height_segments)
 
-    # Bottom center point
-    bottom_center_idx = 0
-    vertices_list.append([0, 0, 0])
+    # Bottom surface (flat)
+    bottom_grid = []
+    for j in range(height_segments):
+        row = []
+        for i in range(width_segments):
+            x = x_values[i]
+            y = y_values[j]
+            row.append(len(vertices_list))
+            vertices_list.append([x, y, 0])
+        bottom_grid.append(row)
 
-    # Bottom circle
-    bottom_circle_start = len(vertices_list)
-    for t in theta:
-        x = radius * np.cos(t)
-        y = radius * np.sin(t)
-        vertices_list.append([x, y, 0])
-
-    # Top surface with embossing
-    radial_steps = np.linspace(0, radius, num_radial)
-    top_vertices_grid = []
-
-    for r_step in radial_steps:
-        ring = []
-        for t in theta:
-            x = r_step * np.cos(t)
-            y = r_step * np.sin(t)
-            z = thickness + fern_function(x, y)
-            ring.append(len(vertices_list))
+    # Top surface (with embossing)
+    top_grid = []
+    for j in range(height_segments):
+        row = []
+        for i in range(width_segments):
+            x = x_values[i]
+            y = y_values[j]
+            z = thickness + beaker_function(x, y)
+            row.append(len(vertices_list))
             vertices_list.append([x, y, z])
-        top_vertices_grid.append(ring)
+        top_grid.append(row)
 
     vertices_array = np.array(vertices_list)
 
     # Create faces
     faces_list = []
 
-    # Bottom surface
-    for i in range(resolution):
-        next_i = (i + 1) % resolution
-        faces_list.append([bottom_center_idx, bottom_circle_start + next_i, bottom_circle_start + i])
-
-    # Side walls
-    for i in range(resolution):
-        next_i = (i + 1) % resolution
-        bottom_v1 = bottom_circle_start + i
-        bottom_v2 = bottom_circle_start + next_i
-        top_v1 = top_vertices_grid[-1][i]
-        top_v2 = top_vertices_grid[-1][next_i]
-
-        faces_list.append([bottom_v1, top_v1, bottom_v2])
-        faces_list.append([bottom_v2, top_v1, top_v2])
-
-    # Top surface (embossed fern)
-    for r_idx in range(len(top_vertices_grid) - 1):
-        for t_idx in range(resolution):
-            next_t = (t_idx + 1) % resolution
-
-            v1 = top_vertices_grid[r_idx][t_idx]
-            v2 = top_vertices_grid[r_idx][next_t]
-            v3 = top_vertices_grid[r_idx + 1][t_idx]
-            v4 = top_vertices_grid[r_idx + 1][next_t]
+    # Bottom surface faces
+    for j in range(height_segments - 1):
+        for i in range(width_segments - 1):
+            v1 = bottom_grid[j][i]
+            v2 = bottom_grid[j][i + 1]
+            v3 = bottom_grid[j + 1][i]
+            v4 = bottom_grid[j + 1][i + 1]
 
             faces_list.append([v1, v3, v2])
             faces_list.append([v2, v3, v4])
 
+    # Top surface faces
+    for j in range(height_segments - 1):
+        for i in range(width_segments - 1):
+            v1 = top_grid[j][i]
+            v2 = top_grid[j][i + 1]
+            v3 = top_grid[j + 1][i]
+            v4 = top_grid[j + 1][i + 1]
+
+            faces_list.append([v1, v2, v3])
+            faces_list.append([v2, v4, v3])
+
+    # Side faces (4 edges)
+    # Left edge
+    for j in range(height_segments - 1):
+        b1 = bottom_grid[j][0]
+        b2 = bottom_grid[j + 1][0]
+        t1 = top_grid[j][0]
+        t2 = top_grid[j + 1][0]
+        faces_list.append([b1, t1, b2])
+        faces_list.append([b2, t1, t2])
+
+    # Right edge
+    for j in range(height_segments - 1):
+        b1 = bottom_grid[j][width_segments - 1]
+        b2 = bottom_grid[j + 1][width_segments - 1]
+        t1 = top_grid[j][width_segments - 1]
+        t2 = top_grid[j + 1][width_segments - 1]
+        faces_list.append([b1, b2, t1])
+        faces_list.append([b2, t2, t1])
+
+    # Front edge
+    for i in range(width_segments - 1):
+        b1 = bottom_grid[0][i]
+        b2 = bottom_grid[0][i + 1]
+        t1 = top_grid[0][i]
+        t2 = top_grid[0][i + 1]
+        faces_list.append([b1, b2, t1])
+        faces_list.append([b2, t2, t1])
+
+    # Back edge
+    for i in range(width_segments - 1):
+        b1 = bottom_grid[height_segments - 1][i]
+        b2 = bottom_grid[height_segments - 1][i + 1]
+        t1 = top_grid[height_segments - 1][i]
+        t2 = top_grid[height_segments - 1][i + 1]
+        faces_list.append([b1, t1, b2])
+        faces_list.append([b2, t1, t2])
+
     faces_array = np.array(faces_list)
 
     # Create mesh
-    fern_coin = mesh.Mesh(np.zeros(len(faces_array), dtype=mesh.Mesh.dtype))
+    beaker_card = mesh.Mesh(np.zeros(len(faces_array), dtype=mesh.Mesh.dtype))
     for i, face in enumerate(faces_array):
         for j in range(3):
-            fern_coin.vectors[i][j] = vertices_array[face[j]]
+            beaker_card.vectors[i][j] = vertices_array[face[j]]
 
-    return fern_coin
+    return beaker_card
 
 def estimate_output_size(input_mesh, point_distance=0.8):
     """
