@@ -339,12 +339,12 @@
                 <div class="form-group">
                     <label class="checkbox-label">
                         <input type="checkbox" id="useDefaultCube" checked>
-                        Use Fiuncholabs card
+                        Use default test object
                     </label>
                 </div>
                 <div id="cubeOptionsSection">
                     <div class="form-group">
-                        <label for="cubeSize">Card Size (mm)</label>
+                        <label for="cubeSize">Object Size (mm)</label>
                         <input type="number" id="cubeSize" value="20" min="5" max="100" step="5">
                     </div>
                 </div>
@@ -639,8 +639,8 @@
                 // Track default object usage
                 trackEvent('default_cube_selected');
 
-                // Generate and show default card preview
-                generateDefaultCardPreview();
+                // Generate and show default object preview
+                generateDefaultObjectPreview();
             } else {
                 processBtn.disabled = !uploadedFile;
 
@@ -652,17 +652,17 @@
             }
         });
 
-        // Update preview when card size changes
+        // Update preview when object size changes
         document.getElementById('cubeSize').addEventListener('input', () => {
             if (useDefaultCube.checked) {
-                generateDefaultCardPreview();
+                generateDefaultObjectPreview();
             }
         });
 
-        function generateDefaultCardPreview() {
+        function generateDefaultObjectPreview() {
             const size = parseFloat(document.getElementById('cubeSize').value);
 
-            // Generate the actual beaker card on the server and display it
+            // Generate the actual default object on the server and display it
             const formData = new FormData();
             formData.append('use_default_cube', 'true');
             formData.append('cube_size', size);
@@ -673,7 +673,7 @@
             formData.append('skip_bottom', 'false');
 
             // Show loading state
-            setStatus('Generating card preview...', 'processing');
+            setStatus('Generating preview...', 'processing');
 
             fetch('/api/process', {
                 method: 'POST',
@@ -988,9 +988,9 @@
         // Initialize
         initViewer();
 
-        // Load default card on page load
+        // Load default object on page load
         if (useDefaultCube.checked) {
-            generateDefaultCardPreview();
+            generateDefaultObjectPreview();
         }
     </script>
 </body>

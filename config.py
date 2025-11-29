@@ -44,6 +44,10 @@ class Config:
     # Analytics
     GA_MEASUREMENT_ID = os.environ.get('GA_MEASUREMENT_ID', None)  # Google Analytics Measurement ID
 
+    # Default object
+    DEFAULT_OBJECT_TYPE = os.environ.get('DEFAULT_OBJECT_TYPE', 'cube').lower()  # 'cube' or 'custom'
+    DEFAULT_OBJECT_SIZE = float(os.environ.get('DEFAULT_OBJECT_SIZE', 20))  # Size in mm
+
 
 class DevelopmentConfig(Config):
     """Development configuration"""

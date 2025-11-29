@@ -96,9 +96,62 @@ class NoiseGenerator:
 
         return 0.0
 
-def generate_test_cube(size=20):
+def generate_simple_cube(size=20):
     """
-    Generate default test object: Fiuncholabs Beaker Card
+    Generate a simple cube for testing/demonstration.
+
+    Args:
+        size: Side length of the cube in mm (default 20mm)
+
+    Returns:
+        mesh.Mesh object
+    """
+    # Define the 8 vertices of a cube
+    vertices = np.array([
+        [-size/2, -size/2, -size/2],
+        [+size/2, -size/2, -size/2],
+        [+size/2, +size/2, -size/2],
+        [-size/2, +size/2, -size/2],
+        [-size/2, -size/2, +size/2],
+        [+size/2, -size/2, +size/2],
+        [+size/2, +size/2, +size/2],
+        [-size/2, +size/2, +size/2],
+    ])
+
+    # Define the 12 triangles (2 per face, 6 faces)
+    faces = np.array([
+        # Bottom face (z = -size/2)
+        [0, 3, 1],
+        [1, 3, 2],
+        # Top face (z = +size/2)
+        [4, 5, 7],
+        [5, 6, 7],
+        # Front face (y = -size/2)
+        [0, 1, 4],
+        [1, 5, 4],
+        # Back face (y = +size/2)
+        [2, 3, 6],
+        [3, 7, 6],
+        # Left face (x = -size/2)
+        [0, 4, 3],
+        [3, 4, 7],
+        # Right face (x = +size/2)
+        [1, 2, 5],
+        [2, 6, 5],
+    ])
+
+    # Create the mesh
+    cube = mesh.Mesh(np.zeros(faces.shape[0], dtype=mesh.Mesh.dtype))
+    for i, face in enumerate(faces):
+        for j in range(3):
+            cube.vectors[i][j] = vertices[face[j], :]
+
+    return cube
+
+
+def generate_custom_object(size=20):
+    """
+    Generate custom test object: Fiuncholabs Beaker Card
     A rectangular card with embossed beaker design (Fiuncholabs branding)
 
     Args:
@@ -304,6 +357,29 @@ def generate_test_cube(size=20):
             beaker_card.vectors[i][j] = vertices_array[face[j]]
 
     return beaker_card
+
+
+def generate_test_cube(size=20, object_type=None):
+    """
+    Generate default test object based on configuration.
+
+    Args:
+        size: Size in mm (cube side length or custom object base size)
+        object_type: 'cube' or 'custom'. If None, uses DEFAULT_OBJECT_TYPE from environment
+
+    Returns:
+        mesh.Mesh object
+    """
+    import os
+
+    if object_type is None:
+        object_type = os.environ.get('DEFAULT_OBJECT_TYPE', 'cube').lower()
+
+    if object_type == 'custom':
+        return generate_custom_object(size)
+    else:
+        return generate_simple_cube(size)
+
 
 def estimate_output_size(input_mesh, point_distance=0.8):
     """
