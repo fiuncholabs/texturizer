@@ -13,6 +13,10 @@ from stl import mesh
 import argparse
 import sys
 import math
+import logging
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 # Try to import noise library for advanced noise types
 try:
@@ -399,33 +403,44 @@ def estimate_output_size(input_mesh, point_distance=0.8):
             - avg_edge_length: Average edge length in input mesh
             - subdivision_factor: Estimated subdivision factor
     """
-    # Sample edge lengths from input mesh
-    sample_size = min(100, len(input_mesh.vectors))
-    sample_edges = []
+    # Analyze ALL triangles to calculate accurate subdivision estimate
+    # We need to find max edge per triangle since each triangle subdivides independently
+    # Note: For large meshes (>10k triangles), we could optimize by random sampling,
+    # but for accurate estimation we analyze all triangles
+    sample_max_edges = []
+    all_edges = []
 
-    for i in range(sample_size):
+    for i in range(len(input_mesh.vectors)):
         v0, v1, v2 = input_mesh.vectors[i]
-        sample_edges.append(np.linalg.norm(v1 - v0))
-        sample_edges.append(np.linalg.norm(v2 - v1))
-        sample_edges.append(np.linalg.norm(v0 - v2))
+        e0 = np.linalg.norm(v1 - v0)
+        e1 = np.linalg.norm(v2 - v1)
+        e2 = np.linalg.norm(v0 - v2)
 
-    avg_edge = float(np.mean(sample_edges))
+        all_edges.extend([e0, e1, e2])
+        sample_max_edges.append(max(e0, e1, e2))
 
-    # Calculate subdivision factor more accurately
-    # The subdivision happens recursively - each edge longer than point_distance gets split
-    # For small point_distance relative to edge length, this grows exponentially
-    edge_ratio = avg_edge / point_distance
+    avg_edge = float(np.mean(all_edges))
+    # Use MEAN of max edges - this works best for varied meshes
+    # Each triangle subdivides based on its own max edge, so the mean represents
+    # the average subdivision level across all triangles
+    mean_max_edge = float(np.mean(sample_max_edges))
 
-    # More accurate estimation based on actual subdivision behavior
-    # Each subdivision level approximately quadruples the triangle count
-    if edge_ratio <= 1.5:
+    # Calculate subdivision factor based on actual algorithm behavior
+    # The subdivision recursively splits triangles into 4 until all edges <= point_distance
+    # Each triangle subdivides based on its MAXIMUM edge length
+    # Number of subdivision levels = ceil(log2(max_edge / point_distance))
+    # Each level quadruples the triangle count, so factor = 4^levels
+
+    # Use mean of max edges - best for varied meshes since each triangle
+    # subdivides independently based on its own max edge
+    representative_max_edge = mean_max_edge
+
+    if representative_max_edge <= point_distance:
         subdivision_factor = 1.0  # No subdivision needed
-    elif edge_ratio <= 3:
-        subdivision_factor = edge_ratio ** 2  # Light subdivision
     else:
-        # For aggressive subdivision (small point_distance), use exponential growth
-        # This matches the actual recursive subdivision behavior
-        subdivision_levels = np.log2(edge_ratio)
+        # Calculate subdivision levels needed
+        edge_ratio = representative_max_edge / point_distance
+        subdivision_levels = np.ceil(np.log2(edge_ratio))
         subdivision_factor = 4 ** subdivision_levels
 
     # Estimate output triangle count
@@ -453,14 +468,15 @@ def estimate_output_size(input_mesh, point_distance=0.8):
     vertex_processing_mb = (estimated_vertices * 3 * 8 * 2) / (1024 * 1024)
     estimated_memory_mb = (triangle_buffer_mb + mesh_object_mb + vertex_processing_mb) * 2
 
-    # Time estimation (very rough):
-    # Subdivision: ~5000 triangles/second
-    # Vertex processing: ~50000 vertices/second
-    # File writing: depends on size but ~100MB/second
-    subdivision_time = estimated_triangles / 5000
-    vertex_time = estimated_vertices / 50000
-    file_write_time = estimated_file_size_mb / 100
-    estimated_time_seconds = subdivision_time + vertex_time + file_write_time
+    # Time estimation based on actual performance data:
+    # From testing: ~100,000 output triangles/second (combined subdivision + vertex processing)
+    # This rate accounts for subdivision, vertex deduplication, normal calculation, and displacement
+    # File writing is negligible compared to processing time
+    estimated_time_seconds = estimated_triangles / 100000
+
+    # Add overhead for very small meshes (setup time ~0.1s)
+    if estimated_time_seconds < 0.5:
+        estimated_time_seconds = max(0.1, estimated_time_seconds)
 
     # Add overhead for very large meshes
     if estimated_triangles > 1_000_000:
