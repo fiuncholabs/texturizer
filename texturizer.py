@@ -333,12 +333,24 @@ def estimate_output_size(input_mesh, point_distance=0.8):
         sample_edges.append(np.linalg.norm(v2 - v1))
         sample_edges.append(np.linalg.norm(v0 - v2))
 
-    avg_edge = np.mean(sample_edges)
+    avg_edge = float(np.mean(sample_edges))
 
-    # Calculate subdivision factor
-    # Each edge subdivision splits a triangle into 4 triangles
-    # Subdivision level = log4(avg_edge / point_distance)
-    subdivision_factor = (avg_edge / point_distance) ** 2
+    # Calculate subdivision factor more accurately
+    # The subdivision happens recursively - each edge longer than point_distance gets split
+    # For small point_distance relative to edge length, this grows exponentially
+    edge_ratio = avg_edge / point_distance
+
+    # More accurate estimation based on actual subdivision behavior
+    # Each subdivision level approximately quadruples the triangle count
+    if edge_ratio <= 1.5:
+        subdivision_factor = 1.0  # No subdivision needed
+    elif edge_ratio <= 3:
+        subdivision_factor = edge_ratio ** 2  # Light subdivision
+    else:
+        # For aggressive subdivision (small point_distance), use exponential growth
+        # This matches the actual recursive subdivision behavior
+        subdivision_levels = np.log2(edge_ratio)
+        subdivision_factor = 4 ** subdivision_levels
 
     # Estimate output triangle count
     input_triangles = len(input_mesh.vectors)
@@ -365,11 +377,25 @@ def estimate_output_size(input_mesh, point_distance=0.8):
     vertex_processing_mb = (estimated_vertices * 3 * 8 * 2) / (1024 * 1024)
     estimated_memory_mb = (triangle_buffer_mb + mesh_object_mb + vertex_processing_mb) * 2
 
+    # Time estimation (very rough):
+    # Subdivision: ~5000 triangles/second
+    # Vertex processing: ~50000 vertices/second
+    # File writing: depends on size but ~100MB/second
+    subdivision_time = estimated_triangles / 5000
+    vertex_time = estimated_vertices / 50000
+    file_write_time = estimated_file_size_mb / 100
+    estimated_time_seconds = subdivision_time + vertex_time + file_write_time
+
+    # Add overhead for very large meshes
+    if estimated_triangles > 1_000_000:
+        estimated_time_seconds *= 1.5
+
     return {
         'estimated_triangles': estimated_triangles,
         'estimated_vertices': estimated_vertices,
         'estimated_file_size_mb': round(estimated_file_size_mb, 2),
         'estimated_memory_mb': round(estimated_memory_mb, 2),
+        'estimated_time_seconds': round(estimated_time_seconds, 1),
         'input_triangles': input_triangles,
         'avg_edge_length': round(avg_edge, 2),
         'subdivision_factor': round(subdivision_factor, 2)

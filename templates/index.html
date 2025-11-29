@@ -213,6 +213,102 @@
         .btn-rotate:hover {
             background: #1a4a7a;
         }
+        /* Confirmation Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.visible {
+            display: flex;
+        }
+        .modal-content {
+            background: #16213e;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 500px;
+            width: 90%;
+            border: 2px solid #3a4a6b;
+        }
+        .modal-title {
+            font-size: 20px;
+            color: #00d4ff;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .estimate-info {
+            background: #0f3460;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .estimate-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #3a4a6b;
+        }
+        .estimate-row:last-child {
+            border-bottom: none;
+        }
+        .estimate-label {
+            color: #aaa;
+            font-size: 14px;
+        }
+        .estimate-value {
+            color: #fff;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .estimate-value.warning {
+            color: #ffa502;
+        }
+        .estimate-value.danger {
+            color: #ff4757;
+        }
+        .warning-message {
+            background: #ffa502;
+            color: #000;
+            padding: 12px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .modal-btn-confirm {
+            background: #00d4ff;
+            color: #000;
+        }
+        .modal-btn-confirm:hover {
+            background: #00b8e6;
+        }
+        .modal-btn-cancel {
+            background: #3a4a6b;
+            color: #fff;
+        }
+        .modal-btn-cancel:hover {
+            background: #4a5a7b;
+        }
         @media (max-width: 900px) {
             .main-content {
                 grid-template-columns: 1fr;
@@ -330,6 +426,36 @@
             <div class="viewer-container">
                 <div id="viewer"></div>
                 <div class="viewer-hint">Drag to rotate, scroll to zoom</div>
+            </div>
+        </div>
+
+        <!-- Confirmation Modal -->
+        <div id="confirmModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-title">Processing Estimate</div>
+                <div id="warningMessage" class="warning-message" style="display: none;"></div>
+                <div class="estimate-info">
+                    <div class="estimate-row">
+                        <span class="estimate-label">Input triangles:</span>
+                        <span id="inputTriangles" class="estimate-value">-</span>
+                    </div>
+                    <div class="estimate-row">
+                        <span class="estimate-label">Output triangles:</span>
+                        <span id="outputTriangles" class="estimate-value">-</span>
+                    </div>
+                    <div class="estimate-row">
+                        <span class="estimate-label">File size:</span>
+                        <span id="fileSize" class="estimate-value">-</span>
+                    </div>
+                    <div class="estimate-row">
+                        <span class="estimate-label">Estimated time:</span>
+                        <span id="estimatedTime" class="estimate-value">-</span>
+                    </div>
+                </div>
+                <div class="modal-buttons">
+                    <button id="cancelBtn" class="modal-btn modal-btn-cancel">Cancel</button>
+                    <button id="confirmBtn" class="modal-btn modal-btn-confirm">Proceed</button>
+                </div>
             </div>
         </div>
 
@@ -649,11 +775,111 @@
             URL.revokeObjectURL(url);
         });
 
-        processBtn.addEventListener('click', async () => {
+        // Modal elements
+        const confirmModal = document.getElementById('confirmModal');
+        const confirmBtn = document.getElementById('confirmBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+
+        // Show confirmation modal with estimates
+        async function showEstimate() {
             const usingDefaultCube = useDefaultCube.checked;
             if (!uploadedFile && !usingDefaultCube) return;
 
             processBtn.disabled = true;
+            setStatus('Calculating estimate...', 'processing');
+
+            const formData = new FormData();
+
+            // Only append file if not using default cube
+            if (!usingDefaultCube) {
+                formData.append('file', uploadedFile);
+            }
+
+            formData.append('use_default_cube', usingDefaultCube);
+            formData.append('cube_size', document.getElementById('cubeSize').value);
+            formData.append('thickness', document.getElementById('thickness').value);
+            formData.append('point_distance', document.getElementById('pointDistance').value);
+            formData.append('seed', document.getElementById('seed').value);
+            formData.append('noise_type', noiseType.value);
+            formData.append('noise_scale', document.getElementById('noiseScale').value);
+            formData.append('noise_octaves', document.getElementById('noiseOctaves').value);
+            formData.append('noise_persistence', document.getElementById('noisePersistence').value);
+            formData.append('skip_bottom', document.getElementById('skipBottom').checked);
+
+            try {
+                const response = await fetch('/api/estimate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Estimation failed');
+                }
+
+                const result = await response.json();
+                const estimates = result.estimates;
+
+                // Populate modal with estimates
+                document.getElementById('inputTriangles').textContent = estimates.input_triangles.toLocaleString();
+
+                const outputTrianglesEl = document.getElementById('outputTriangles');
+                const multiplier = (estimates.estimated_triangles / estimates.input_triangles).toFixed(1);
+                outputTrianglesEl.textContent = `${estimates.estimated_triangles.toLocaleString()} (~${multiplier}x)`;
+
+                const fileSizeEl = document.getElementById('fileSize');
+                if (estimates.estimated_file_size_mb >= 1000) {
+                    fileSizeEl.textContent = `${(estimates.estimated_file_size_mb / 1024).toFixed(2)} GB`;
+                    fileSizeEl.className = 'estimate-value danger';
+                } else if (estimates.estimated_file_size_mb >= 100) {
+                    fileSizeEl.textContent = `${estimates.estimated_file_size_mb.toFixed(1)} MB`;
+                    fileSizeEl.className = 'estimate-value warning';
+                } else {
+                    fileSizeEl.textContent = `${estimates.estimated_file_size_mb.toFixed(1)} MB`;
+                    fileSizeEl.className = 'estimate-value';
+                }
+
+                const estimatedTimeEl = document.getElementById('estimatedTime');
+                const timeSeconds = estimates.estimated_time_seconds;
+                if (timeSeconds >= 300) {
+                    estimatedTimeEl.textContent = `${(timeSeconds / 60).toFixed(1)} minutes`;
+                    estimatedTimeEl.className = 'estimate-value warning';
+                } else if (timeSeconds >= 60) {
+                    estimatedTimeEl.textContent = `${(timeSeconds / 60).toFixed(1)} minutes`;
+                    estimatedTimeEl.className = 'estimate-value';
+                } else {
+                    estimatedTimeEl.textContent = `${timeSeconds.toFixed(1)} seconds`;
+                    estimatedTimeEl.className = 'estimate-value';
+                }
+
+                // Show warning if not feasible or very large
+                const warningEl = document.getElementById('warningMessage');
+                if (!result.feasible) {
+                    warningEl.textContent = `⚠️ ${result.reason}`;
+                    warningEl.style.display = 'block';
+                } else if (estimates.estimated_triangles > 10000000) {
+                    warningEl.textContent = '⚠️ This will create a very large file and may take several minutes to process.';
+                    warningEl.style.display = 'block';
+                } else if (estimates.estimated_file_size_mb > 500) {
+                    warningEl.textContent = '⚠️ The output file will be very large and may be difficult to download.';
+                    warningEl.style.display = 'block';
+                } else {
+                    warningEl.style.display = 'none';
+                }
+
+                // Show modal
+                confirmModal.classList.add('visible');
+                setStatus('', '');
+            } catch (error) {
+                setStatus('Error: ' + error.message, 'error');
+                processBtn.disabled = false;
+            }
+        }
+
+        // Process the STL file
+        async function processSTL() {
+            const usingDefaultCube = useDefaultCube.checked;
+
             processingStartTime = performance.now();
             setStatus('Processing... This may take a moment.', 'processing');
 
@@ -734,6 +960,21 @@
             } finally {
                 processBtn.disabled = false;
             }
+        }
+
+        // Process button shows estimate first
+        processBtn.addEventListener('click', showEstimate);
+
+        // Confirm button starts actual processing
+        confirmBtn.addEventListener('click', () => {
+            confirmModal.classList.remove('visible');
+            processSTL();
+        });
+
+        // Cancel button closes modal
+        cancelBtn.addEventListener('click', () => {
+            confirmModal.classList.remove('visible');
+            processBtn.disabled = false;
         });
 
         function setStatus(message, type) {
