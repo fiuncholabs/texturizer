@@ -420,10 +420,6 @@ def estimate_output_size(input_mesh, point_distance=0.8):
         sample_max_edges.append(max(e0, e1, e2))
 
     avg_edge = float(np.mean(all_edges))
-    # Use MEAN of max edges - this works best for varied meshes
-    # Each triangle subdivides based on its own max edge, so the mean represents
-    # the average subdivision level across all triangles
-    mean_max_edge = float(np.mean(sample_max_edges))
 
     # Calculate subdivision factor based on actual algorithm behavior
     # The subdivision recursively splits triangles into 4 until all edges <= point_distance
@@ -431,9 +427,12 @@ def estimate_output_size(input_mesh, point_distance=0.8):
     # Number of subdivision levels = ceil(log2(max_edge / point_distance))
     # Each level quadruples the triangle count, so factor = 4^levels
 
-    # Use mean of max edges - best for varied meshes since each triangle
-    # subdivides independently based on its own max edge
-    representative_max_edge = mean_max_edge
+    # Use 90th percentile of max edges - this provides better estimates for varied meshes
+    # The 90th percentile captures the larger triangles that drive most of the subdivision,
+    # while not being overly affected by a few extremely large outliers
+    # For uniform meshes (like cubes), all percentiles are equal so this remains exact
+    percentile_90_max = float(np.percentile(sample_max_edges, 90))
+    representative_max_edge = percentile_90_max
 
     if representative_max_edge <= point_distance:
         subdivision_factor = 1.0  # No subdivision needed
