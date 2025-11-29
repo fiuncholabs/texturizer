@@ -157,7 +157,11 @@ def validate_parameters(f):
 @app.route('/')
 def index():
     """Render main page"""
-    return render_template('index.html', noise_types=NOISE_TYPES)
+    return render_template(
+        'index.html',
+        noise_types=NOISE_TYPES,
+        enable_rotation_controls=app.config.get('ENABLE_ROTATION_CONTROLS', False)
+    )
 
 
 @app.route('/health')

@@ -394,6 +394,7 @@
                     </div>
                 </div>
 
+                {% if enable_rotation_controls %}
                 <div class="section-title">Model Rotation</div>
                 <div class="form-group">
                     <label>Rotate X</label>
@@ -416,6 +417,7 @@
                         <button class="btn-rotate" onclick="rotateModel('z', 90)">+90°</button>
                     </div>
                 </div>
+                {% endif %}
 
                 <div class="section-title">Actions</div>
                 <button id="processBtn" class="btn btn-primary">Process STL</button>

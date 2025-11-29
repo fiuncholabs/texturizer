@@ -48,6 +48,9 @@ class Config:
     DEFAULT_OBJECT_TYPE = os.environ.get('DEFAULT_OBJECT_TYPE', 'cube').lower()  # 'cube' or 'custom'
     DEFAULT_OBJECT_SIZE = float(os.environ.get('DEFAULT_OBJECT_SIZE', 20))  # Size in mm
 
+    # UI features
+    ENABLE_ROTATION_CONTROLS = os.environ.get('ENABLE_ROTATION_CONTROLS', 'false').lower() == 'true'  # Show rotation controls
+
 
 class DevelopmentConfig(Config):
     """Development configuration"""
