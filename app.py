@@ -4,7 +4,7 @@ Flask web application for STL Fuzzy Skin Texturizer
 Production-ready version with security, logging, and monitoring
 """
 
-from flask import Flask, render_template, request, send_file, jsonify, Response
+from flask import Flask, render_template, request, send_file, jsonify, Response, redirect, url_for
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -32,6 +32,10 @@ from texturizer import (
 
 # Import configuration
 from config import get_config
+
+# Import authentication (if enabled)
+from auth import init_oauth, login_route, callback_route, logout_route
+from flask_login import current_user
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -104,6 +108,11 @@ if not app.config.get('DEBUG'):
     Talisman(app, content_security_policy=csp, force_https=False)
     app.logger.info("Security headers enabled")
 
+# Initialize OAuth if enabled
+oauth_client = init_oauth(app)
+if oauth_client:
+    app.logger.info("Google OAuth authentication enabled")
+
 
 # Utility decorators
 def log_request(f):
@@ -162,7 +171,9 @@ def index():
         noise_types=NOISE_TYPES,
         enable_rotation_controls=app.config.get('ENABLE_ROTATION_CONTROLS', False),
         show_support_footer=app.config.get('SHOW_SUPPORT_FOOTER', False),
-        version=app.config.get('VERSION', 'unknown')
+        version=app.config.get('VERSION', 'unknown'),
+        enable_google_auth=app.config.get('ENABLE_GOOGLE_AUTH', False),
+        current_user=current_user
     )
 
 
@@ -465,6 +476,28 @@ def process_stl():
 def not_found(error):
     """Handle 404 errors"""
     return jsonify({'error': 'Not found'}), 404
+
+
+@app.route('/auth/login')
+def login():
+    """Initiate Google OAuth login"""
+    if not oauth_client:
+        return redirect(url_for('index'))
+    return login_route(app, oauth_client)
+
+
+@app.route('/auth/callback')
+def auth_callback():
+    """Handle OAuth callback from Google"""
+    if not oauth_client:
+        return redirect(url_for('index'))
+    return callback_route(app, oauth_client)
+
+
+@app.route('/auth/logout')
+def logout():
+    """Handle logout"""
+    return logout_route()
 
 
 @app.errorhandler(413)

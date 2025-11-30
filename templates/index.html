@@ -35,7 +35,44 @@
         h1 {
             text-align: center;
             color: #4ade80;
-            margin-bottom: 30px;
+            margin-bottom: 10px;
+        }
+        .auth-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .auth-info {
+            display: inline-block;
+            background: #1e3e21;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        .auth-button {
+            display: inline-block;
+            background: #4ade80;
+            color: #1a2e1a;
+            padding: 8px 16px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        .auth-button:hover {
+            background: #22c55e;
+        }
+        .auth-button.logout {
+            background: #ef4444;
+            color: white;
+            margin-left: 10px;
+        }
+        .auth-button.logout:hover {
+            background: #dc2626;
+        }
+        .user-name {
+            color: #4ade80;
+            font-weight: 500;
         }
         .main-content {
             display: grid;
@@ -376,6 +413,19 @@
 <body>
     <div class="container">
         <h1>STL Fuzzy Skin Texturizer</h1>
+
+        {% if enable_google_auth %}
+        <div class="auth-container">
+            <div class="auth-info">
+                {% if current_user.is_authenticated %}
+                    <span>Signed in as <span class="user-name">{{ current_user.name }}</span></span>
+                    <a href="/auth/logout" class="auth-button logout">Sign Out</a>
+                {% else %}
+                    <a href="/auth/login" class="auth-button">Sign in with Google</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
 
         <div class="main-content">
             <div class="controls">

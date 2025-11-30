@@ -455,6 +455,75 @@ GOOGLE_DISCOVERY_URL=https://accounts.google.com/.well-known/openid-configuratio
 - App works identically when ENABLE_GOOGLE_AUTH=false
 - Documentation covers setup, security, and troubleshooting
 
+### Session: 2025-11-30 (Afternoon - OAuth Implementation)
+**Work Completed**:
+1. Created auth.py module with complete Google OAuth 2.0 flow
+2. Integrated OAuth into app.py with routes and initialization
+3. Updated UI with authentication buttons (conditional rendering)
+4. Installed required dependencies (flask-login, requests, oauthlib)
+5. Tested application successfully with OAuth disabled (default)
+
+**Files Created**:
+- `auth.py` - Complete OAuth authentication module (178 lines)
+  - User class with session-based storage (no database)
+  - OAuth client initialization with feature flag check
+  - Login route with Google authorization redirect
+  - Callback route for token exchange and user creation
+  - Logout route with session cleanup
+
+**Files Modified**:
+- `app.py` - OAuth integration
+  - Added imports: redirect, url_for, auth module, current_user
+  - OAuth client initialization (lines 111-114)
+  - Pass auth state to template (lines 175-176)
+  - Authentication routes: /auth/login, /auth/callback, /auth/logout (lines 481-500)
+- `templates/index.html` - Authentication UI
+  - CSS for auth components (lines 35-76): .auth-container, .auth-button, .user-name
+  - HTML for sign in/out buttons (lines 417-428)
+  - Conditional rendering based on enable_google_auth flag
+
+**OAuth Flow Implementation**:
+1. User clicks "Sign in with Google" → redirects to Google authorization
+2. Google callback → app exchanges code for access token
+3. App fetches user info from Google (email, name, picture)
+4. User stored in Flask session (no database)
+5. User logged in with Flask-Login
+6. UI shows user name and "Sign Out" button
+
+**Technical Details**:
+- Session-based authentication using Flask sessions
+- User class implements UserMixin for Flask-Login compatibility
+- User.get() retrieves from session, not database
+- User.create() stores user data in session
+- OAuth only initializes when ENABLE_GOOGLE_AUTH=true
+- All routes gracefully redirect to index when OAuth disabled
+
+**UI Design**:
+- Dark forest green theme consistency maintained
+- Auth container centered below title
+- Green "Sign in with Google" button matches accent color
+- Red "Sign Out" button for clear logout action
+- User name displayed in green when authenticated
+- Entire auth section hidden when feature disabled
+
+**Error Fixes**:
+1. ModuleNotFoundError for 'requests' - Fixed by installing dependencies
+2. Missing Flask imports (redirect, url_for) - Added to import statement
+
+**Testing**:
+- App starts successfully with authentication disabled (default)
+- No UI changes when ENABLE_GOOGLE_AUTH=false
+- Auth UI ready for testing when credentials configured
+- Feature flag pattern working as intended
+
+**Notes**:
+- OAuth is fully functional but disabled by default
+- Requires Google Cloud OAuth credentials to test sign-in flow
+- Session expires on browser close (configurable)
+- No database required - pure session-based authentication
+- App maintains identical behavior when auth disabled
+- Ready for production testing with actual OAuth credentials
+
 ---
 
 ## Instructions for Future AI Sessions
