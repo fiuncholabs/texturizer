@@ -24,7 +24,7 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             padding: 20px;
-            background: #1a1a2e;
+            background: #1a2e1a;
             color: #eee;
             min-height: 100vh;
         }
@@ -34,7 +34,7 @@
         }
         h1 {
             text-align: center;
-            color: #00d4ff;
+            color: #4ade80;
             margin-bottom: 30px;
         }
         .main-content {
@@ -43,13 +43,13 @@
             gap: 20px;
         }
         .controls {
-            background: #16213e;
+            background: #1e3e21;
             padding: 20px;
             border-radius: 10px;
             height: fit-content;
         }
         .viewer-container {
-            background: #16213e;
+            background: #1e3e21;
             border-radius: 10px;
             overflow: hidden;
             min-height: 600px;
@@ -73,16 +73,16 @@
         select {
             width: 100%;
             padding: 8px 12px;
-            border: 1px solid #3a4a6b;
+            border: 1px solid #3a6b4a;
             border-radius: 5px;
-            background: #0f3460;
+            background: #0f4a30;
             color: #fff;
             font-size: 14px;
         }
         input[type="number"]:focus,
         select:focus {
             outline: none;
-            border-color: #00d4ff;
+            border-color: #4ade80;
         }
         input[type="checkbox"] {
             margin-right: 8px;
@@ -103,22 +103,22 @@
             transition: background 0.2s;
         }
         .btn-primary {
-            background: #00d4ff;
+            background: #4ade80;
             color: #000;
         }
         .btn-primary:hover {
-            background: #00b8e6;
+            background: #22c55e;
         }
         .btn-primary:disabled {
             background: #4a5568;
             cursor: not-allowed;
         }
         .btn-secondary {
-            background: #3a4a6b;
+            background: #3a6b4a;
             color: #fff;
         }
         .btn-secondary:hover {
-            background: #4a5a7b;
+            background: #4a7b5a;
         }
         .file-input-wrapper {
             position: relative;
@@ -138,7 +138,7 @@
         .file-input-btn {
             display: block;
             padding: 12px;
-            background: #3a4a6b;
+            background: #3a6b4a;
             color: #fff;
             text-align: center;
             border-radius: 5px;
@@ -154,8 +154,8 @@
             font-size: 16px;
             font-weight: 600;
             margin: 20px 0 10px 0;
-            color: #00d4ff;
-            border-bottom: 1px solid #3a4a6b;
+            color: #4ade80;
+            border-bottom: 1px solid #3a6b4a;
             padding-bottom: 5px;
         }
         .section-title:first-child {
@@ -203,15 +203,15 @@
         .btn-rotate {
             flex: 1;
             padding: 8px;
-            border: 1px solid #3a4a6b;
+            border: 1px solid #3a6b4a;
             border-radius: 5px;
-            background: #0f3460;
+            background: #0f4a30;
             color: #fff;
             cursor: pointer;
             font-size: 14px;
         }
         .btn-rotate:hover {
-            background: #1a4a7a;
+            background: #1a5a3a;
         }
         /* Confirmation Modal */
         .modal {
@@ -230,21 +230,21 @@
             display: flex;
         }
         .modal-content {
-            background: #16213e;
+            background: #1e3e21;
             padding: 30px;
             border-radius: 10px;
             max-width: 500px;
             width: 90%;
-            border: 2px solid #3a4a6b;
+            border: 2px solid #3a6b4a;
         }
         .modal-title {
             font-size: 20px;
-            color: #00d4ff;
+            color: #4ade80;
             margin-bottom: 20px;
             text-align: center;
         }
         .estimate-info {
-            background: #0f3460;
+            background: #0f4a30;
             padding: 15px;
             border-radius: 5px;
             margin-bottom: 20px;
@@ -253,7 +253,7 @@
             display: flex;
             justify-content: space-between;
             padding: 8px 0;
-            border-bottom: 1px solid #3a4a6b;
+            border-bottom: 1px solid #3a6b4a;
         }
         .estimate-row:last-child {
             border-bottom: none;
@@ -296,18 +296,18 @@
             transition: background 0.2s;
         }
         .modal-btn-confirm {
-            background: #00d4ff;
+            background: #4ade80;
             color: #000;
         }
         .modal-btn-confirm:hover {
-            background: #00b8e6;
+            background: #22c55e;
         }
         .modal-btn-cancel {
-            background: #3a4a6b;
+            background: #3a6b4a;
             color: #fff;
         }
         .modal-btn-cancel:hover {
-            background: #4a5a7b;
+            background: #4a7b5a;
         }
         @media (max-width: 900px) {
             .main-content {
@@ -324,7 +324,6 @@
             <div class="controls">
                 <div id="status" class="status"></div>
 
-                <div class="section-title">Upload STL</div>
                 <div id="fileUploadSection">
                     <div class="form-group">
                         <div class="file-input-wrapper">
@@ -335,7 +334,6 @@
                     </div>
                 </div>
 
-                <div class="section-title">Or Use Default Object</div>
                 <div class="form-group">
                     <label class="checkbox-label">
                         <input type="checkbox" id="useDefaultCube" checked>
@@ -344,6 +342,14 @@
                 </div>
 
                 <div class="section-title">Fuzzy Skin Settings</div>
+                <div class="form-group">
+                    <label for="noiseType">Noise Type</label>
+                    <select id="noiseType">
+                        {% for noise in noise_types %}
+                        <option value="{{ noise }}">{{ noise.capitalize() }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
                 <div class="form-group">
                     <label for="thickness">Thickness (mm)</label>
                     <input type="number" id="thickness" value="0.3" min="0.05" max="5" step="0.05">
@@ -367,14 +373,6 @@
                         <input type="checkbox" id="skipSmallTriangles" checked>
                         Triangle size optimization
                     </label>
-                </div>
-                <div class="form-group">
-                    <label for="noiseType">Noise Type</label>
-                    <select id="noiseType">
-                        {% for noise in noise_types %}
-                        <option value="{{ noise }}">{{ noise.capitalize() }}</option>
-                        {% endfor %}
-                    </select>
                 </div>
 
                 <div id="noiseOptions" class="noise-options">
@@ -417,7 +415,6 @@
                 </div>
                 {% endif %}
 
-                <div class="section-title">Actions</div>
                 <button id="processBtn" class="btn btn-primary">Process STL</button>
                 <button id="downloadBtn" class="btn btn-primary" disabled>Download Result</button>
                 <button id="resetViewBtn" class="btn btn-secondary">Reset View</button>
@@ -465,9 +462,9 @@
                 STL Fuzzy Skin Texturizer - Open Source Project
             </p>
             <p style="margin-bottom: 10px;">
-                <a href="https://github.com/your-username/texturizer" target="_blank" style="color: #00d4ff; text-decoration: none;">GitHub</a>
+                <a href="https://github.com/your-username/texturizer" target="_blank" style="color: #4ade80; text-decoration: none;">GitHub</a>
                 •
-                <a href="https://ko-fi.com/igloopup" target="_blank" style="color: #00d4ff; text-decoration: none;">Support on Ko-fi</a>
+                <a href="https://ko-fi.com/igloopup" target="_blank" style="color: #4ade80; text-decoration: none;">Support on Ko-fi</a>
             </p>
             <p style="font-size: 11px; color: #666;">
                 Inspired by OrcaSlicer's fuzzy skin implementation
@@ -494,7 +491,7 @@
 
         function initViewer() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a1a2e);
+            scene.background = new THREE.Color(0x1a2e1a);
 
             camera = new THREE.PerspectiveCamera(
                 45,
@@ -525,7 +522,7 @@
             scene.add(directionalLight2);
 
             // Grid
-            const grid = new THREE.GridHelper(200, 20, 0x3a4a6b, 0x2a3a5b);
+            const grid = new THREE.GridHelper(200, 20, 0x3a6b4a, 0x2a5a3a);
             scene.add(grid);
 
             animate();
@@ -553,7 +550,7 @@
             const geometry = loader.parse(arrayBuffer);
 
             const material = new THREE.MeshPhongMaterial({
-                color: 0x00d4ff,
+                color: 0x4ade80,
                 specular: 0x111111,
                 shininess: 200
             });
@@ -697,7 +694,7 @@
             const thickness = size * 0.1;
             const geometry = new THREE.BoxGeometry(width, thickness, height);
             const material = new THREE.MeshPhongMaterial({
-                color: 0x00d4ff,
+                color: 0x4ade80,
                 specular: 0x111111,
                 shininess: 200
             });
