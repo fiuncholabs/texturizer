@@ -210,6 +210,7 @@ def estimate_stl():
         point_distance = float(request.form.get('point_distance', 0.8))
         use_default_cube = request.form.get('use_default_cube', 'false').lower() == 'true'
         cube_size = float(request.form.get('cube_size', 20))
+        skip_small_triangles = request.form.get('skip_small_triangles', 'false').lower() == 'true'
 
         # Load mesh
         if use_default_cube:
@@ -242,7 +243,8 @@ def estimate_stl():
             point_distance=point_distance,
             max_triangles=max_triangles,
             max_memory_mb=max_memory_mb,
-            max_file_size_mb=max_file_size_mb
+            max_file_size_mb=max_file_size_mb,
+            skip_small_triangles=skip_small_triangles
         )
 
         return jsonify({
