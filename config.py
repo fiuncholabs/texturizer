@@ -50,6 +50,7 @@ class Config:
 
     # UI features
     ENABLE_ROTATION_CONTROLS = os.environ.get('ENABLE_ROTATION_CONTROLS', 'false').lower() == 'true'  # Show rotation controls
+    SHOW_SUPPORT_FOOTER = os.environ.get('SHOW_SUPPORT_FOOTER', 'false').lower() == 'true'  # Show support/donation links in footer
 
 
 class DevelopmentConfig(Config):

@@ -160,7 +160,8 @@ def index():
     return render_template(
         'index.html',
         noise_types=NOISE_TYPES,
-        enable_rotation_controls=app.config.get('ENABLE_ROTATION_CONTROLS', False)
+        enable_rotation_controls=app.config.get('ENABLE_ROTATION_CONTROLS', False),
+        show_support_footer=app.config.get('SHOW_SUPPORT_FOOTER', False)
     )
 
 
