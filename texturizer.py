@@ -4,6 +4,25 @@ Fuzzy Skin Texture Generator for STL files
 Applies random surface displacement similar to slicer "fuzzy skin" feature
 with multiple noise types matching OrcaSlicer's implementation.
 
+PERFORMANCE NOTE: Why OrcaSlicer is faster
+------------------------------------------
+OrcaSlicer applies fuzzy skin during the slicing process by working on 2D polylines
+(perimeter paths). It only adds texture points along existing slice contours without
+creating a 3D volumetric mesh.
+
+This tool, in contrast, must work on 3D STL meshes BEFORE slicing:
+1. Subdivides ALL triangles in the 3D mesh to achieve the target point_distance
+2. Creates a complete 3D volumetric textured surface
+3. This pre-slicing approach is fundamentally more resource-intensive
+
+The performance difference is architectural, not an optimization opportunity:
+- Orca: 2D path processing during slicing (no mesh subdivision)
+- This tool: 3D mesh subdivision before slicing (creates full textured geometry)
+
+For typical settings (thickness=0.2mm, point_distance=0.2mm), a simple 20mm cube
+requires ~50,000 output triangles. This is expected and correct for pre-slicing
+3D mesh texturing.
+
 Requires: numpy, numpy-stl, noise
 Install: pip install numpy numpy-stl noise
 """
