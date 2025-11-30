@@ -3,11 +3,17 @@ Google OAuth authentication module for STL Texturizer
 Provides session-based authentication using Google OAuth 2.0
 """
 
+import os
 import json
 import requests
 from flask import session, redirect, request, url_for
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user
 from oauthlib.oauth2 import WebApplicationClient
+
+# Allow insecure transport for local development (HTTP instead of HTTPS)
+# WARNING: Only use this for local development, never in production!
+if os.environ.get('FLASK_ENV') == 'development':
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # Initialize Flask-Login
 login_manager = LoginManager()

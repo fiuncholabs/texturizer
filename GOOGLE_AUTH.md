@@ -233,25 +233,243 @@ These are minimal scopes for basic authentication.
 
 ## Testing
 
-### Local Development Testing
+### Local Development Testing (HTTP on localhost)
 
-1. Set `ENABLE_GOOGLE_AUTH=false` to test without authentication
-2. Set `ENABLE_GOOGLE_AUTH=true` with test credentials to verify OAuth flow
-3. Test sign in, processing STL files, sign out
-4. Verify sessions persist across page refreshes
-5. Verify sign out clears session
+**Important**: OAuth normally requires HTTPS, but for local development testing over HTTP, the implementation includes a special flag that allows insecure transport.
+
+#### Prerequisites
+1. Google Cloud OAuth credentials configured with redirect URI: `http://localhost:8000/auth/callback`
+2. `.env` file configured (see setup instructions above)
+
+#### Environment Configuration for Development Testing
+
+Your `.env` file should have:
+```bash
+# Enable development mode (allows HTTP OAuth for testing)
+FLASK_ENV=development
+
+# Enable Google OAuth
+ENABLE_GOOGLE_AUTH=true
+
+# Your Google OAuth credentials
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_DISCOVERY_URL=https://accounts.google.com/.well-known/openid-configuration
+
+# Secret key for sessions
+SECRET_KEY=dev-secret-key-for-testing-only-change-in-production
+```
+
+**Critical**: The `FLASK_ENV=development` setting enables the `OAUTHLIB_INSECURE_TRANSPORT` flag in `auth.py`, which allows OAuth to work over HTTP. This is **automatically disabled** in production.
+
+#### Testing Steps
+
+1. **Start the development server**:
+   ```bash
+   python3 app.py
+   ```
+
+2. **Verify OAuth is enabled** - Check the console output for:
+   ```
+   Google OAuth authentication enabled
+   ```
+
+3. **Open the application**: Navigate to `http://localhost:8000`
+
+4. **Test sign-in flow**:
+   - Click "Sign in with Google" button
+   - You'll be redirected to Google's consent screen
+   - Authorize the application
+   - You should be redirected back to `http://localhost:8000/auth/callback`
+   - Your name should appear in the UI with a "Sign Out" button
+
+5. **Test authenticated session**:
+   - Refresh the page - you should still be signed in
+   - Process an STL file - functionality should work identically
+   - Your session persists as long as the browser is open
+
+6. **Test sign-out**:
+   - Click "Sign Out" button
+   - Session should be cleared
+   - "Sign in with Google" button should appear again
+
+7. **Test without authentication**:
+   - Set `ENABLE_GOOGLE_AUTH=false` in `.env`
+   - Restart the server
+   - Verify no authentication UI appears
+   - Verify all STL processing works identically
+
+#### Troubleshooting Development Testing
+
+**"insecure transport error"**
+- Ensure `FLASK_ENV=development` is set in `.env`
+- Restart the application after changing `.env`
+- The insecure transport flag only works in development mode
+
+**"redirect_uri_mismatch"**
+- Verify your Google Cloud Console has `http://localhost:8000/auth/callback` (exact URL)
+- Check for trailing slashes - they must match exactly
+
+**Session not persisting**
+- Ensure `SECRET_KEY` is set in `.env`
+- Check that cookies are enabled in your browser
+- Clear browser cookies and try again
+
+### Production Deployment
+
+**CRITICAL SECURITY REQUIREMENTS** for production:
+
+#### 1. HTTPS is Mandatory
+
+OAuth **will not work** over HTTP in production. You must have:
+- Valid SSL/TLS certificate installed
+- HTTPS enabled on your domain
+- HTTP redirects to HTTPS
+
+#### 2. Environment Configuration
+
+Your production `.env` must have:
+```bash
+# Production environment (disables insecure transport)
+FLASK_ENV=production
+
+# Enable Google OAuth
+ENABLE_GOOGLE_AUTH=true
+
+# Production OAuth credentials
+GOOGLE_CLIENT_ID=your-production-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-production-client-secret
+
+# CRITICAL: Strong random secret key for session encryption
+SECRET_KEY=your-strong-random-secret-key-here
+
+# Discovery URL (usually same)
+GOOGLE_DISCOVERY_URL=https://accounts.google.com/.well-known/openid-configuration
+```
+
+**Generate a strong SECRET_KEY**:
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+#### 3. Google Cloud Console Configuration
+
+1. **Authorized JavaScript origins**:
+   - `https://yourdomain.com`
+
+2. **Authorized redirect URIs**:
+   - `https://yourdomain.com/auth/callback`
+
+   ⚠️ Must be exact match, including `https://` and no trailing slash
+
+3. **OAuth Consent Screen**:
+   - Configure app name and logo
+   - Add privacy policy URL
+   - Add terms of service URL
+   - Submit for verification if making app public
+
+#### 4. Production Testing Checklist
+
+Before going live, verify:
+
+- [ ] `FLASK_ENV=production` set in environment
+- [ ] HTTPS working correctly on domain
+- [ ] OAuth credentials configured for production domain
+- [ ] Redirect URIs match production URLs exactly
+- [ ] `SECRET_KEY` is strong, random, and persistent across restarts
+- [ ] `SECRET_KEY` is kept confidential (not in version control)
+- [ ] OAuth consent screen fully configured
+- [ ] Privacy policy and ToS accessible
+- [ ] Test sign in flow over HTTPS
+- [ ] Test sign out clears session properly
+- [ ] Sessions persist across page refreshes
+- [ ] Error pages display user-friendly messages
+- [ ] Server logs don't expose sensitive information
+- [ ] Rate limiting configured appropriately
+
+#### 5. Deployment Commands
+
+**Using Gunicorn (recommended)**:
+```bash
+gunicorn --config gunicorn.conf.py app:app
+```
+
+**Environment variables** can be set via:
+- `.env` file (ensure it's not in git)
+- System environment variables
+- Container orchestration (Docker, Kubernetes)
+- Platform-specific config (Heroku, AWS, etc.)
+
+#### 6. Security Checklist
+
+Production security requirements:
+
+- [ ] HTTPS/TLS enabled with valid certificate
+- [ ] `FLASK_ENV=production` (disables debug mode and insecure transport)
+- [ ] Strong `SECRET_KEY` (32+ random bytes)
+- [ ] `.env` file not committed to version control
+- [ ] OAuth Client Secret kept confidential
+- [ ] Rate limiting enabled (`RATELIMIT_ENABLED=true`)
+- [ ] CORS configured appropriately
+- [ ] Session timeout configured
+- [ ] Error messages don't leak sensitive information
+- [ ] Logs don't contain credentials or tokens
+
+#### 7. How Insecure Transport Flag Works
+
+The implementation in `auth.py` includes:
+
+```python
+# Allow insecure transport for local development (HTTP instead of HTTPS)
+# WARNING: Only use this for local development, never in production!
+if os.environ.get('FLASK_ENV') == 'development':
+    os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+```
+
+**Key points**:
+- Only activates when `FLASK_ENV=development`
+- Automatically disabled in production (`FLASK_ENV=production`)
+- Allows OAuth over HTTP for localhost testing
+- Should **never** be manually enabled in production
+- Google will reject OAuth over HTTP in production anyway
+
+#### 8. Migrating from Development to Production
+
+When deploying to production:
+
+1. **Update `.env` file**:
+   - Change `FLASK_ENV=development` → `FLASK_ENV=production`
+   - Update `SECRET_KEY` to strong random value
+   - Update OAuth credentials to production values
+
+2. **Update Google Cloud Console**:
+   - Add production domain to authorized origins
+   - Add `https://yourdomain.com/auth/callback` to redirect URIs
+
+3. **Enable HTTPS**:
+   - Install SSL/TLS certificate
+   - Configure web server (nginx, Apache, etc.)
+   - Test HTTPS access
+
+4. **Deploy and test**:
+   - Deploy application with production configuration
+   - Test OAuth flow over HTTPS
+   - Verify sessions work correctly
+   - Monitor logs for any errors
 
 ### Production Testing Checklist
 
-- [ ] OAuth credentials configured for production domain
-- [ ] HTTPS enabled and working
-- [ ] Redirect URIs match production URLs
-- [ ] SECRET_KEY is strong and persistent
-- [ ] OAuth consent screen configured
-- [ ] Privacy policy and ToS links working
-- [ ] Sign in/out flow works correctly
-- [ ] Sessions persist appropriately
-- [ ] Error handling displays user-friendly messages
+Final verification before launch:
+
+- [ ] OAuth works over HTTPS
+- [ ] Sign in redirects to Google correctly
+- [ ] Callback returns to production domain
+- [ ] User info displays correctly after authentication
+- [ ] Sessions persist across requests
+- [ ] Sign out clears session completely
+- [ ] Application works identically with/without authentication
+- [ ] No errors in production logs
+- [ ] Performance is acceptable under load
 
 ## Future Enhancements
 
