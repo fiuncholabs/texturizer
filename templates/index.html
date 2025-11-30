@@ -190,6 +190,63 @@
             color: #666;
             pointer-events: none;
         }
+        .info-section {
+            margin-top: 15px;
+            padding: 15px;
+            background: #1e3e21;
+            border-radius: 8px;
+            border: 1px solid #3a6b4a;
+        }
+        .info-toggle {
+            background: none;
+            border: none;
+            color: #4ade80;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            text-align: left;
+        }
+        .info-toggle:hover {
+            color: #22c55e;
+        }
+        .info-toggle-icon {
+            transition: transform 0.2s;
+        }
+        .info-toggle-icon.expanded {
+            transform: rotate(90deg);
+        }
+        .info-content {
+            display: none;
+            margin-top: 15px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #ccc;
+        }
+        .info-content.visible {
+            display: block;
+        }
+        .info-content h3 {
+            color: #4ade80;
+            font-size: 14px;
+            margin: 15px 0 8px 0;
+        }
+        .info-content h3:first-child {
+            margin-top: 0;
+        }
+        .info-content p {
+            margin: 8px 0;
+        }
+        .info-content ul {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+        .info-content li {
+            margin: 4px 0;
+        }
         .noise-options {
             display: none;
         }
@@ -423,6 +480,44 @@
             <div class="viewer-container">
                 <div id="viewer"></div>
                 <div class="viewer-hint">Drag to rotate, scroll to zoom</div>
+
+                <div class="info-section">
+                    <button class="info-toggle" onclick="toggleInfo()">
+                        <span class="info-toggle-icon" id="infoIcon">▶</span>
+                        <span>More Info</span>
+                    </button>
+                    <div class="info-content" id="infoContent">
+                        <h3>About This Tool</h3>
+                        <p>This application replicates OrcaSlicer's fuzzy skin feature by applying texture directly to STL files. The fuzzy skin effect adds a randomized surface texture that can help hide layer lines and create interesting surface finishes.</p>
+
+                        <h3>STL vs G-code: Key Differences</h3>
+                        <p>Unlike OrcaSlicer which generates fuzzy skin at the G-code level during slicing, this tool modifies the mesh geometry itself. This approach has important implications:</p>
+                        <ul>
+                            <li><strong>Triangle count:</strong> The output STL will have significantly more triangles than the input, as the mesh must be subdivided to achieve the texture effect. Large or detailed models may result in very large files.</li>
+                            <li><strong>Processing time:</strong> Mesh subdivision is computationally intensive. Complex models may take longer to process than generating G-code.</li>
+                            <li><strong>File size:</strong> The resulting STL files can be much larger than the original, which may impact slicer performance.</li>
+                            <li><strong>Flexibility:</strong> Once applied, the fuzzy skin texture is permanent in the mesh and cannot be easily adjusted without reprocessing the original file.</li>
+                        </ul>
+
+                        <h3>Triangle Size Optimization</h3>
+                        <p>The "Triangle size optimization" setting skips subdivision for triangles that are already smaller than the point distance parameter. This optimization:</p>
+                        <ul>
+                            <li>Significantly reduces processing time and output file size for detailed models</li>
+                            <li>Prevents unnecessary subdivision of small details that wouldn't benefit from additional texture</li>
+                            <li>May result in slightly uneven texture density on models with varying triangle sizes</li>
+                            <li>Is generally recommended for most use cases, especially for complex or high-resolution meshes</li>
+                        </ul>
+
+                        <h3>Processing Limits</h3>
+                        <p>To ensure reasonable processing times and prevent server overload, the following limits are enforced:</p>
+                        <ul>
+                            <li><strong>Maximum output triangles:</strong> 20 million triangles</li>
+                            <li><strong>Maximum file size:</strong> 500 MB for the output STL file</li>
+                            <li><strong>Maximum memory usage:</strong> 4 GB estimated memory consumption</li>
+                        </ul>
+                        <p>If your model exceeds these limits, try increasing the point distance parameter or enabling triangle size optimization. The application will provide an estimate before processing and suggest adjustments if needed.</p>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -610,6 +705,21 @@
             }
             controls.target.set(0, 0, 0);
             controls.update();
+        }
+
+        function toggleInfo() {
+            const content = document.getElementById('infoContent');
+            const icon = document.getElementById('infoIcon');
+
+            if (content.classList.contains('visible')) {
+                content.classList.remove('visible');
+                icon.classList.remove('expanded');
+                icon.textContent = '▶';
+            } else {
+                content.classList.add('visible');
+                icon.classList.add('expanded');
+                icon.textContent = '▼';
+            }
         }
 
         // UI handling
