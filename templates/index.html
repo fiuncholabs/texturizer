@@ -368,6 +368,12 @@
                         Skip bottom layer
                     </label>
                 </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="skipSmallTriangles" checked>
+                        Triangle size optimization
+                    </label>
+                </div>
 
                 <div class="section-title">Noise Settings</div>
                 <div class="form-group">
@@ -807,6 +813,7 @@
             formData.append('noise_octaves', document.getElementById('noiseOctaves').value);
             formData.append('noise_persistence', document.getElementById('noisePersistence').value);
             formData.append('skip_bottom', document.getElementById('skipBottom').checked);
+            formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
 
             try {
                 const response = await fetch('/api/estimate', {
@@ -909,6 +916,7 @@
             formData.append('noise_octaves', document.getElementById('noiseOctaves').value);
             formData.append('noise_persistence', document.getElementById('noisePersistence').value);
             formData.append('skip_bottom', document.getElementById('skipBottom').checked);
+            formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
 
             try {
                 const response = await fetch('/api/process', {

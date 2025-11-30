@@ -404,13 +404,14 @@ def generate_test_cube(size=20, object_type=None):
         return generate_simple_cube(size)
 
 
-def estimate_output_size(input_mesh, point_distance=0.8):
+def estimate_output_size(input_mesh, point_distance=0.8, skip_small_triangles=False):
     """
     Estimate the output STL file size and triangle count before processing.
 
     Args:
         input_mesh: numpy-stl mesh object
         point_distance: Target distance between texture points (mm)
+        skip_small_triangles: If True, skip subdivision for triangles with at least one edge < point_distance
 
     Returns:
         dict with keys:
@@ -421,6 +422,7 @@ def estimate_output_size(input_mesh, point_distance=0.8):
             - input_triangles: Number of input triangles
             - avg_edge_length: Average edge length in input mesh
             - subdivision_factor: Estimated subdivision factor
+            - skipped_small_percent: Percentage of triangles skipped (if optimization enabled)
     """
     # Analyze ALL triangles to calculate accurate subdivision estimate
     # We need to find max edge per triangle since each triangle subdivides independently
@@ -428,6 +430,7 @@ def estimate_output_size(input_mesh, point_distance=0.8):
     # but for accurate estimation we analyze all triangles
     sample_max_edges = []
     all_edges = []
+    skipped_count = 0
 
     for i in range(len(input_mesh.vectors)):
         v0, v1, v2 = input_mesh.vectors[i]
@@ -436,7 +439,12 @@ def estimate_output_size(input_mesh, point_distance=0.8):
         e2 = np.linalg.norm(v0 - v2)
 
         all_edges.extend([e0, e1, e2])
-        sample_max_edges.append(max(e0, e1, e2))
+
+        # Check if this triangle would be skipped with optimization
+        if skip_small_triangles and min(e0, e1, e2) <= point_distance:
+            skipped_count += 1
+        else:
+            sample_max_edges.append(max(e0, e1, e2))
 
     avg_edge = float(np.mean(all_edges))
 
@@ -463,7 +471,14 @@ def estimate_output_size(input_mesh, point_distance=0.8):
 
     # Estimate output triangle count
     input_triangles = len(input_mesh.vectors)
-    estimated_triangles = int(input_triangles * subdivision_factor)
+
+    if skip_small_triangles:
+        # Only subdivide non-skipped triangles
+        triangles_to_subdivide = input_triangles - skipped_count
+        estimated_subdivided = int(triangles_to_subdivide * subdivision_factor)
+        estimated_triangles = estimated_subdivided + skipped_count
+    else:
+        estimated_triangles = int(input_triangles * subdivision_factor)
 
     # Estimate unique vertices (approximately triangles / 2 for a closed mesh)
     estimated_vertices = int(estimated_triangles / 2)
@@ -500,7 +515,7 @@ def estimate_output_size(input_mesh, point_distance=0.8):
     if estimated_triangles > 1_000_000:
         estimated_time_seconds *= 1.5
 
-    return {
+    result = {
         'estimated_triangles': estimated_triangles,
         'estimated_vertices': estimated_vertices,
         'estimated_file_size_mb': round(estimated_file_size_mb, 2),
@@ -511,11 +526,17 @@ def estimate_output_size(input_mesh, point_distance=0.8):
         'subdivision_factor': round(subdivision_factor, 2)
     }
 
+    if skip_small_triangles:
+        result['skipped_small_percent'] = round((skipped_count / input_triangles * 100) if input_triangles > 0 else 0, 1)
+
+    return result
+
 
 def check_processing_feasibility(input_mesh, point_distance=0.8,
                                  max_triangles=20_000_000,
                                  max_memory_mb=4096,
-                                 max_file_size_mb=500):
+                                 max_file_size_mb=500,
+                                 skip_small_triangles=False):
     """
     Check if processing is feasible with given constraints.
 
@@ -525,6 +546,7 @@ def check_processing_feasibility(input_mesh, point_distance=0.8,
         max_triangles: Maximum allowed output triangles (default: 20 million)
         max_memory_mb: Maximum allowed memory usage in MB (default: 4GB)
         max_file_size_mb: Maximum allowed output file size in MB (default: 500MB)
+        skip_small_triangles: If True, skip subdivision for triangles with at least one edge < point_distance
 
     Returns:
         dict with keys:
@@ -533,7 +555,7 @@ def check_processing_feasibility(input_mesh, point_distance=0.8,
             - estimates: Dict from estimate_output_size()
             - suggestions: List of suggestions to make processing feasible
     """
-    estimates = estimate_output_size(input_mesh, point_distance)
+    estimates = estimate_output_size(input_mesh, point_distance, skip_small_triangles=skip_small_triangles)
 
     feasible = True
     reason = None
@@ -624,7 +646,7 @@ def subdivide_triangle(v0, v1, v2, max_edge_length):
 
 def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                      noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
-                     noise_persistence=0.5, skip_bottom=False):
+                     noise_persistence=0.5, skip_bottom=False, skip_small_triangles=False):
     """
     Apply fuzzy skin texture to mesh by subdividing and displacing vertices.
 
@@ -638,6 +660,7 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
         noise_octaves: Number of octaves for Perlin/Billow noise
         noise_persistence: Amplitude persistence for Perlin/Billow noise
         skip_bottom: If True, skip fuzzy skin on bottom layer (z ≈ min_z)
+        skip_small_triangles: If True, skip subdivision for triangles with at least one edge < point_distance
     """
     np.random.seed(seed)
 
@@ -676,10 +699,26 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     estimated_triangles = max(estimated_triangles, len(input_mesh.vectors) * 4)
     triangle_buffer = np.zeros((estimated_triangles, 3, 3), dtype=np.float32)
     triangle_count = 0
+    skipped_small = 0
 
     for face_idx, face in enumerate(input_mesh.vectors):
         v0, v1, v2 = face
-        subdivided = subdivide_triangle(v0, v1, v2, point_distance)
+
+        # Optimization: skip subdivision if triangle is already small enough
+        if skip_small_triangles:
+            e0 = np.linalg.norm(v1 - v0)
+            e1 = np.linalg.norm(v2 - v1)
+            e2 = np.linalg.norm(v0 - v2)
+            min_edge = min(e0, e1, e2)
+
+            # If at least one edge is below point_distance, keep as-is
+            if min_edge <= point_distance:
+                subdivided = [(v0, v1, v2)]
+                skipped_small += 1
+            else:
+                subdivided = subdivide_triangle(v0, v1, v2, point_distance)
+        else:
+            subdivided = subdivide_triangle(v0, v1, v2, point_distance)
 
         # Expand buffer if needed
         if triangle_count + len(subdivided) > len(triangle_buffer):
@@ -700,7 +739,11 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     # Trim buffer to actual size
     triangle_buffer = triangle_buffer[:triangle_count]
 
-    print(f"Subdivided {len(input_mesh.vectors)} triangles into {triangle_count} triangles")
+    if skip_small_triangles and skipped_small > 0:
+        print(f"Subdivided {len(input_mesh.vectors)} triangles into {triangle_count} triangles")
+        print(f"  Optimization: skipped subdivision for {skipped_small} small triangles ({skipped_small/len(input_mesh.vectors)*100:.1f}%)")
+    else:
+        print(f"Subdivided {len(input_mesh.vectors)} triangles into {triangle_count} triangles")
 
     # Create new mesh from subdivided triangles
     output_mesh = mesh.Mesh(np.zeros(triangle_count, dtype=mesh.Mesh.dtype))

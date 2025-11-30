@@ -188,7 +188,8 @@ def get_info():
             'noise_scale': 1.0,
             'noise_octaves': 4,
             'noise_persistence': 0.5,
-            'skip_bottom': False
+            'skip_bottom': False,
+            'skip_small_triangles': False
         }
     })
 
@@ -294,6 +295,7 @@ def process_stl():
         noise_octaves = int(request.form.get('noise_octaves', 4))
         noise_persistence = float(request.form.get('noise_persistence', 0.5))
         skip_bottom = request.form.get('skip_bottom', 'false').lower() == 'true'
+        skip_small_triangles = request.form.get('skip_small_triangles', 'false').lower() == 'true'
         use_default_cube = request.form.get('use_default_cube', 'false').lower() == 'true'
         cube_size = float(request.form.get('cube_size', 20))
 
@@ -372,7 +374,8 @@ def process_stl():
                 point_distance=point_distance,
                 max_triangles=max_triangles,
                 max_memory_mb=max_memory_mb,
-                max_file_size_mb=max_file_size_mb
+                max_file_size_mb=max_file_size_mb,
+                skip_small_triangles=skip_small_triangles
             )
 
             # Log estimates
@@ -402,7 +405,8 @@ def process_stl():
                     noise_scale=noise_scale,
                     noise_octaves=noise_octaves,
                     noise_persistence=noise_persistence,
-                    skip_bottom=skip_bottom
+                    skip_bottom=skip_bottom,
+                    skip_small_triangles=skip_small_triangles
                 )
                 app.logger.info(f"Output mesh has {len(output_mesh.vectors)} triangles")
             except MemoryError:
