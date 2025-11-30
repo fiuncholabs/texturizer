@@ -342,14 +342,8 @@
                         Use default test object
                     </label>
                 </div>
-                <div id="cubeOptionsSection">
-                    <div class="form-group">
-                        <label for="cubeSize">Object Size (mm)</label>
-                        <input type="number" id="cubeSize" value="20" min="5" max="100" step="5">
-                    </div>
-                </div>
 
-                <div class="section-title">Basic Parameters</div>
+                <div class="section-title">Fuzzy Skin Settings</div>
                 <div class="form-group">
                     <label for="thickness">Thickness (mm)</label>
                     <input type="number" id="thickness" value="0.3" min="0.05" max="5" step="0.05">
@@ -374,8 +368,6 @@
                         Triangle size optimization
                     </label>
                 </div>
-
-                <div class="section-title">Noise Settings</div>
                 <div class="form-group">
                     <label for="noiseType">Noise Type</label>
                     <select id="noiseType">
@@ -662,15 +654,8 @@
             }
         });
 
-        // Update preview when object size changes
-        document.getElementById('cubeSize').addEventListener('input', () => {
-            if (useDefaultCube.checked) {
-                generateDefaultObjectPreview();
-            }
-        });
-
         function generateDefaultObjectPreview() {
-            const size = parseFloat(document.getElementById('cubeSize').value);
+            const size = 20; // Fixed default object size
 
             // Generate the actual default object on the server and display it
             const formData = new FormData();
@@ -806,7 +791,7 @@
             }
 
             formData.append('use_default_cube', usingDefaultCube);
-            formData.append('cube_size', document.getElementById('cubeSize').value);
+            formData.append('cube_size', 20);
             formData.append('thickness', document.getElementById('thickness').value);
             formData.append('point_distance', document.getElementById('pointDistance').value);
             formData.append('seed', document.getElementById('seed').value);
@@ -909,7 +894,7 @@
             }
 
             formData.append('use_default_cube', usingDefaultCube);
-            formData.append('cube_size', document.getElementById('cubeSize').value);
+            formData.append('cube_size', 20);
             formData.append('thickness', document.getElementById('thickness').value);
             formData.append('point_distance', document.getElementById('pointDistance').value);
             formData.append('seed', document.getElementById('seed').value);
