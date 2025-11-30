@@ -8,6 +8,9 @@ from datetime import timedelta
 
 class Config:
     """Base configuration"""
+    # Application version
+    VERSION = 'v0.1'  # First Leaf
+
     # Flask
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
 
