@@ -393,21 +393,67 @@ gunicorn --config gunicorn.conf.py app:app
 
 ## Recent Session Work Log
 
-### Session: 2025-11-30
+### Session: 2025-11-30 (Morning)
 **Work Completed**:
 1. Fixed estimate endpoint bug (skip_small_triangles parameter)
 2. Created comprehensive AI development context document
-3. Prepared for git commit
+3. Created v0.1 "First Leaf" release with git tag
+4. Added version display in UI
+5. Set up development branch for future work
 
 **Commits**:
 - `93f5ccf` - Fix estimate endpoint to respect triangle size optimization setting
 - `c3785df` - Add expandable info section with documentation about the tool
 - `e9ca8b8` - Update UI with dark forest green theme and improved layout
+- `99bc29b` - Add AI_DEVELOPMENT_CONTEXT.md for project continuity
+- `002038e` - Add version v0.1 (First Leaf) to application
+
+**Git Tags**:
+- `v0.1` - First Leaf release (stable baseline with core functionality)
+
+**Branches**:
+- `main` - Stable releases (tagged v0.1)
+- `development` - New feature development
 
 **Notes**:
 - Estimates now correctly reflect optimization benefits
 - UI theme is fully green (no blue remnants)
 - Info section provides user documentation inline
+- Version system in place for future releases
+- Development branch ready for new features
+
+### Session: 2025-11-30 (Afternoon - OAuth Configuration)
+**Work Completed**:
+1. Added Google OAuth configuration infrastructure
+2. Updated requirements.txt with authentication dependencies
+3. Created comprehensive GOOGLE_AUTH.md documentation
+4. Updated AI_DEVELOPMENT_CONTEXT.md with OAuth feature
+
+**Files Modified**:
+- `.env.example` - Added OAuth environment variables (lines 59-65)
+- `config.py` - Added OAuth configuration (lines 55-59)
+- `requirements.txt` - Added flask-login, requests, oauthlib packages
+- `GOOGLE_AUTH.md` - Complete setup and usage documentation
+
+**Configuration Added**:
+```bash
+ENABLE_GOOGLE_AUTH=false  # Feature flag for optional authentication
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_DISCOVERY_URL=https://accounts.google.com/.well-known/openid-configuration
+```
+
+**Next Steps**:
+- Implement auth module with OAuth flow
+- Add login/logout routes to app.py
+- Update UI with authentication buttons (when enabled)
+- Test OAuth flow with test credentials
+
+**Notes**:
+- Authentication is fully optional (feature-flagged)
+- Session-based implementation (no database in v0.1)
+- App works identically when ENABLE_GOOGLE_AUTH=false
+- Documentation covers setup, security, and troubleshooting
 
 ---
 

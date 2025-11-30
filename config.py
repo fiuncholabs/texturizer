@@ -55,6 +55,12 @@ class Config:
     ENABLE_ROTATION_CONTROLS = os.environ.get('ENABLE_ROTATION_CONTROLS', 'false').lower() == 'true'  # Show rotation controls
     SHOW_SUPPORT_FOOTER = os.environ.get('SHOW_SUPPORT_FOOTER', 'false').lower() == 'true'  # Show support/donation links in footer
 
+    # Google OAuth
+    ENABLE_GOOGLE_AUTH = os.environ.get('ENABLE_GOOGLE_AUTH', 'false').lower() == 'true'  # Enable Google Sign-In
+    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', None)
+    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', None)
+    GOOGLE_DISCOVERY_URL = os.environ.get('GOOGLE_DISCOVERY_URL', 'https://accounts.google.com/.well-known/openid-configuration')
+
 
 class DevelopmentConfig(Config):
     """Development configuration"""
