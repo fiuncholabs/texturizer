@@ -644,7 +644,7 @@
                 0.1,
                 10000
             );
-            camera.position.set(100, 100, 100);
+            camera.position.set(150, 120, 150);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
@@ -716,7 +716,7 @@
             const size = new THREE.Vector3();
             geometry.boundingBox.getSize(size);
             const maxDim = Math.max(size.x, size.y, size.z);
-            camera.position.set(maxDim * 1.5, maxDim * 1.5, maxDim * 1.5);
+            camera.position.set(maxDim * 2.5, maxDim * 2.5, maxDim * 2.5);
             controls.target.set(0, 0, 0);
             controls.update();
 
@@ -749,7 +749,7 @@
                 const size = new THREE.Vector3();
                 geometry.boundingBox.getSize(size);
                 const maxDim = Math.max(size.x, size.y, size.z);
-                camera.position.set(maxDim * 1.5, maxDim * 1.5, maxDim * 1.5);
+                camera.position.set(maxDim * 2.5, maxDim * 2.5, maxDim * 2.5);
             } else {
                 camera.position.set(100, 100, 100);
             }
@@ -867,7 +867,7 @@
             currentMesh.position.set(0, 0, 0);
             scene.add(currentMesh);
 
-            camera.position.set(size * 2, size * 1.5, size * 2);
+            camera.position.set(size * 4.5, size * 3.5, size * 4.5);
             controls.target.set(0, 0, 0);
             controls.update();
         }
