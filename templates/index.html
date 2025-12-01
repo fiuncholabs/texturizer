@@ -1069,8 +1069,22 @@
                 });
 
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Processing failed');
+                    // Check if response is JSON or HTML
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Processing failed');
+                    } else {
+                        // Server returned HTML (error page, timeout, or crash)
+                        const text = await response.text();
+                        if (response.status === 504 || response.status === 502) {
+                            throw new Error('Server timeout - try using a larger point distance value or smaller file');
+                        } else if (response.status === 500) {
+                            throw new Error('Server error - the model may be too complex. Try a larger point distance.');
+                        } else {
+                            throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                        }
+                    }
                 }
 
                 // Get filename from Content-Disposition header
