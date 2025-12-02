@@ -78,14 +78,14 @@ class TestProductionDeployment(unittest.TestCase):
         self.assertEqual(response.status_code, 200, "Estimate should succeed")
 
         result = response.json()
-        self.assertIn('can_process', result, "Should indicate if processing is possible")
-        self.assertIn('estimated_time', result, "Should include time estimate")
-        self.assertIn('estimated_triangles', result, "Should include triangle count estimate")
+        self.assertIn('feasible', result, "Should indicate if processing is possible")
+        self.assertIn('estimates', result, "Should include time estimate")
+        self.assertIn('estimates', result, "Should include triangle count estimate")
 
         print(f"✓ Estimate completed in {estimate_time:.2f}s")
-        print(f"  Can process: {result['can_process']}")
-        print(f"  Estimated time: {result['estimated_time']:.1f}s")
-        print(f"  Estimated triangles: {result['estimated_triangles']:,}")
+        print(f"  Can process: {result['feasible']}")
+        print(f"  Estimated time: {result['estimates']['estimated_time_seconds']:.1f}s")
+        print(f"  Estimated triangles: {result['estimates']['estimated_triangles']:,}")
 
         # Store for next test
         self.__class__.basic_estimate = result
@@ -118,14 +118,14 @@ class TestProductionDeployment(unittest.TestCase):
 
         # Critical: verify that the estimate says we CAN process this
         self.assertTrue(
-            estimate['can_process'],
+            estimate['feasible'],
             f"Estimate should indicate fuzzy skin variant is processable. "
-            f"Estimated triangles: {estimate.get('estimated_triangles', 'unknown')}"
+            f"Estimated triangles: {estimate.get('estimates', {}).get('estimated_triangles', 'unknown')}"
         )
 
         print(f"✓ Estimate confirms fuzzy skin variant can be processed")
-        print(f"  Estimated triangles: {estimate['estimated_triangles']:,}")
-        print(f"  Estimated time: {estimate['estimated_time']:.1f}s")
+        print(f"  Estimated triangles: {estimate['estimates']['estimated_triangles']:,}")
+        print(f"  Estimated time: {estimate['estimates']['estimated_time_seconds']:.1f}s")
 
         # Store for comparison with actual processing
         self.__class__.fuzzy_estimate = estimate
@@ -138,7 +138,7 @@ class TestProductionDeployment(unittest.TestCase):
         if not hasattr(self.__class__, 'fuzzy_estimate'):
             self.skipTest("Estimate test not run")
 
-        if not self.__class__.fuzzy_estimate['can_process']:
+        if not self.__class__.fuzzy_estimate['feasible']:
             self.skipTest("Estimate indicated processing not possible")
 
         with open(self.test_file_path, 'rb') as f:
@@ -173,7 +173,7 @@ class TestProductionDeployment(unittest.TestCase):
 
         # Compare with estimate
         estimate = self.__class__.fuzzy_estimate
-        estimated_time = estimate['estimated_time']
+        estimated_time = estimate['estimates']['estimated_time_seconds']
         time_diff = abs(actual_time - estimated_time)
         time_accuracy = (1 - time_diff / max(actual_time, estimated_time)) * 100
 
@@ -217,11 +217,11 @@ class TestProductionDeployment(unittest.TestCase):
         estimate = response.json()
 
         print(f"✓ Fine detail estimate completed")
-        print(f"  Can process: {estimate['can_process']}")
-        print(f"  Estimated triangles: {estimate.get('estimated_triangles', 0):,}")
-        print(f"  Estimated time: {estimate.get('estimated_time', 0):.1f}s")
+        print(f"  Can process: {estimate['feasible']}")
+        print(f"  Estimated triangles: {estimate.get('estimates', {}).get('estimated_triangles', 0):,}")
+        print(f"  Estimated time: {estimate.get('estimates', {}).get('estimated_time_seconds', 0):.1f}s")
 
-        if not estimate['can_process']:
+        if not estimate['feasible']:
             print(f"  Reason: {estimate.get('reason', 'Unknown')}")
 
         # Store for reference
@@ -302,19 +302,19 @@ class TestProductionDeployment(unittest.TestCase):
         first = estimates[0]
         for est in estimates[1:]:
             self.assertEqual(
-                est['estimated_triangles'],
-                first['estimated_triangles'],
+                est['estimates']['estimated_triangles'],
+                first['estimates']['estimated_triangles'],
                 "Triangle count estimate should be consistent"
             )
             self.assertEqual(
-                est['can_process'],
-                first['can_process'],
+                est['feasible'],
+                first['feasible'],
                 "Processing capability should be consistent"
             )
 
         print(f"✓ Estimates are consistent across {len(estimates)} calls")
-        print(f"  Triangles: {first['estimated_triangles']:,}")
-        print(f"  Can process: {first['can_process']}")
+        print(f"  Triangles: {first['estimates']['estimated_triangles']:,}")
+        print(f"  Can process: {first['feasible']}")
 
     @classmethod
     def tearDownClass(cls):
@@ -325,9 +325,9 @@ class TestProductionDeployment(unittest.TestCase):
 
         if hasattr(cls, 'fuzzy_estimate'):
             print(f"\nFuzzy Skin Estimate:")
-            print(f"  Can process: {cls.fuzzy_estimate['can_process']}")
-            print(f"  Estimated triangles: {cls.fuzzy_estimate['estimated_triangles']:,}")
-            print(f"  Estimated time: {cls.fuzzy_estimate['estimated_time']:.1f}s")
+            print(f"  Can process: {cls.fuzzy_estimate['feasible']}")
+            print(f"  Estimated triangles: {cls.fuzzy_estimate['estimates']['estimated_triangles']:,}")
+            print(f"  Estimated time: {cls.fuzzy_estimate['estimates']['estimated_time_seconds']:.1f}s")
 
         if hasattr(cls, 'actual_processing_time'):
             print(f"\nActual Processing:")
@@ -336,10 +336,10 @@ class TestProductionDeployment(unittest.TestCase):
 
         if hasattr(cls, 'fine_detail_estimate'):
             print(f"\nFine Detail Estimate:")
-            print(f"  Can process: {cls.fine_detail_estimate['can_process']}")
-            if cls.fine_detail_estimate['can_process']:
-                print(f"  Estimated triangles: {cls.fine_detail_estimate['estimated_triangles']:,}")
-                print(f"  Estimated time: {cls.fine_detail_estimate['estimated_time']:.1f}s")
+            print(f"  Can process: {cls.fine_detail_estimate['feasible']}")
+            if cls.fine_detail_estimate['feasible']:
+                print(f"  Estimated triangles: {cls.fine_detail_estimate['estimates']['estimated_triangles']:,}")
+                print(f"  Estimated time: {cls.fine_detail_estimate['estimates']['estimated_time_seconds']:.1f}s")
             else:
                 print(f"  Reason: {cls.fine_detail_estimate.get('reason', 'Unknown')}")
 
