@@ -527,6 +527,16 @@
                             <input type="number" id="cylinderHeight" value="30" min="1" max="200" step="1">
                         </div>
                     </div>
+
+                    <div class="form-group">
+                        <label for="blockerAlgorithm">Detection Algorithm</label>
+                        <select id="blockerAlgorithm">
+                            <option value="ray_casting" selected>Ray Casting (Accurate)</option>
+                            <option value="bounding_box">Bounding Box (Fast)</option>
+                            <option value="bounding_sphere">Bounding Sphere (Fast)</option>
+                            <option value="bounding_cylinder">Bounding Cylinder (Fast)</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div id="noiseOptions" class="noise-options">
@@ -1250,6 +1260,7 @@
             // Blocker parameters
             if (useBlocker.checked) {
                 formData.append('use_blocker', 'true');
+                formData.append('blocker_algorithm', document.getElementById('blockerAlgorithm').value);
                 if (useDefaultCylinder.checked) {
                     formData.append('use_default_cylinder', 'true');
                     formData.append('cylinder_radius', cylinderRadius.value);

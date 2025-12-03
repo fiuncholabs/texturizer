@@ -483,19 +483,93 @@ def generate_blocker_cylinder(radius=10, height=30, position=(0, 0, 0), segments
     return cylinder
 
 
-def point_inside_mesh_volume(points, blocker_mesh, algorithm='bounding_cylinder'):
+def point_inside_mesh_volume(points, blocker_mesh, algorithm='ray_casting'):
     """
     Check if points are inside a blocker mesh volume.
 
     Args:
         points: Nx3 numpy array of vertex positions
         blocker_mesh: mesh.Mesh object (blocker volume)
-        algorithm: 'bounding_cylinder' (default) or 'bounding_box'
+        algorithm: Algorithm to use for point-in-volume testing:
+                   'ray_casting' - Accurate for any closed mesh (default)
+                   'bounding_box' - Fast, conservative (rectangular bounds)
+                   'bounding_sphere' - Fast, conservative (spherical bounds)
+                   'bounding_cylinder' - Fast, for cylinder-shaped blockers
 
     Returns:
         Boolean array of length N (True if inside volume)
     """
-    if algorithm == 'bounding_cylinder':
+    if algorithm == 'ray_casting':
+        # Ray casting: cast ray from point, count intersections with mesh
+        # Odd number of intersections = inside, even = outside
+        # This is the most accurate method for arbitrary closed meshes
+
+        all_triangles = blocker_mesh.vectors
+        inside = np.zeros(len(points), dtype=bool)
+
+        # Ray direction: along +X axis (arbitrary choice)
+        ray_dir = np.array([1.0, 0.0, 0.0])
+
+        for idx, point in enumerate(points):
+            intersection_count = 0
+
+            # Check intersection with each triangle
+            for tri in all_triangles:
+                v0, v1, v2 = tri
+
+                # Möller–Trumbore ray-triangle intersection algorithm
+                edge1 = v1 - v0
+                edge2 = v2 - v0
+                h = np.cross(ray_dir, edge2)
+                a = np.dot(edge1, h)
+
+                # Ray is parallel to triangle
+                if abs(a) < 1e-8:
+                    continue
+
+                f = 1.0 / a
+                s = point - v0
+                u = f * np.dot(s, h)
+
+                if u < 0.0 or u > 1.0:
+                    continue
+
+                q = np.cross(s, edge1)
+                v = f * np.dot(ray_dir, q)
+
+                if v < 0.0 or u + v > 1.0:
+                    continue
+
+                # Intersection distance along ray
+                t = f * np.dot(edge2, q)
+
+                # Only count intersections in front of the point
+                if t > 1e-8:
+                    intersection_count += 1
+
+            # Odd number of intersections = inside
+            inside[idx] = (intersection_count % 2) == 1
+
+        return inside
+
+    elif algorithm == 'bounding_sphere':
+        # Sphere: check if point is within spherical bounds
+        all_vertices = blocker_mesh.vectors.reshape(-1, 3)
+
+        # Calculate center as mean of all vertices
+        center = np.mean(all_vertices, axis=0)
+
+        # Calculate radius as max distance from center
+        distances = np.linalg.norm(all_vertices - center, axis=1)
+        radius = np.max(distances)
+
+        # Check if each point is within sphere
+        point_distances = np.linalg.norm(points - center, axis=1)
+        inside = point_distances <= radius
+
+        return inside
+
+    elif algorithm == 'bounding_cylinder':
         # For cylinders: check if point is within cylindrical bounds
         # 1. Calculate cylinder center and dimensions from mesh
         all_vertices = blocker_mesh.vectors.reshape(-1, 3)
@@ -783,7 +857,7 @@ def subdivide_triangle(v0, v1, v2, max_edge_length):
 def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                      noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
                      noise_persistence=0.5, skip_bottom=False, skip_small_triangles=False,
-                     blocker_mesh=None):
+                     blocker_mesh=None, blocker_algorithm='ray_casting'):
     """
     Apply fuzzy skin texture to mesh by subdividing and displacing vertices.
 
@@ -800,6 +874,8 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
         skip_small_triangles: If True, skip subdivision for triangles with at least one edge < point_distance
         blocker_mesh: mesh.Mesh object representing a blocker volume (optional). Vertices inside this
                       volume will not have fuzzy skin applied.
+        blocker_algorithm: Algorithm for point-in-volume testing ('ray_casting', 'bounding_box',
+                          'bounding_sphere', 'bounding_cylinder')
     """
     np.random.seed(seed)
 
@@ -953,8 +1029,8 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
 
     # Apply blocker if provided
     if blocker_mesh is not None:
-        print("Checking vertices against blocker volume...")
-        blocker_mask = point_inside_mesh_volume(unique_vertices, blocker_mesh)
+        print(f"Checking vertices against blocker volume (algorithm: {blocker_algorithm})...")
+        blocker_mask = point_inside_mesh_volume(unique_vertices, blocker_mesh, algorithm=blocker_algorithm)
         process_mask &= ~blocker_mask  # Don't process vertices inside blocker
         blocker_skipped = np.sum(blocker_mask)
         if blocker_skipped > 0:

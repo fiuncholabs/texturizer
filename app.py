@@ -321,10 +321,12 @@ def process_stl():
         use_default_cylinder = request.form.get('use_default_cylinder', 'false').lower() == 'true'
         cylinder_radius = float(request.form.get('cylinder_radius', 10))
         cylinder_height = float(request.form.get('cylinder_height', 30))
+        blocker_algorithm = request.form.get('blocker_algorithm', 'ray_casting')
 
         app.logger.info(f"Processing request - use_default_cube={use_default_cube}, "
                        f"thickness={thickness}, point_distance={point_distance}, "
-                       f"noise_type={noise_type}, use_blocker={use_blocker}")
+                       f"noise_type={noise_type}, use_blocker={use_blocker}, "
+                       f"blocker_algorithm={blocker_algorithm}")
 
         # Validate noise type
         if noise_type not in NOISE_TYPES:
@@ -470,7 +472,8 @@ def process_stl():
                     noise_persistence=noise_persistence,
                     skip_bottom=skip_bottom,
                     skip_small_triangles=skip_small_triangles,
-                    blocker_mesh=blocker_mesh
+                    blocker_mesh=blocker_mesh,
+                    blocker_algorithm=blocker_algorithm
                 )
                 app.logger.info(f"Output mesh has {len(output_mesh.vectors)} triangles")
             except MemoryError:
