@@ -323,6 +323,14 @@ def process_stl():
         cylinder_height = float(request.form.get('cylinder_height', 30))
         blocker_algorithm = request.form.get('blocker_algorithm', 'ray_casting')
 
+        # Blocker position and rotation parameters
+        blocker_pos_x = float(request.form.get('blocker_pos_x', 0))
+        blocker_pos_y = float(request.form.get('blocker_pos_y', 0))
+        blocker_pos_z = float(request.form.get('blocker_pos_z', 0))
+        blocker_rot_x = float(request.form.get('blocker_rot_x', 0))
+        blocker_rot_y = float(request.form.get('blocker_rot_y', 0))
+        blocker_rot_z = float(request.form.get('blocker_rot_z', 0))
+
         app.logger.info(f"Processing request - use_default_cube={use_default_cube}, "
                        f"thickness={thickness}, point_distance={point_distance}, "
                        f"noise_type={noise_type}, use_blocker={use_blocker}, "
@@ -393,14 +401,26 @@ def process_stl():
                 max_coords = input_mesh.vectors.max(axis=(0, 1))
                 center = (min_coords + max_coords) / 2
 
-                # Generate default cylinder blocker at the center of the input mesh
+                # Generate default cylinder blocker with position and rotation
+                # Apply user-specified offset to the center position
+                final_position = (
+                    center[0] + blocker_pos_x,
+                    center[1] + blocker_pos_y,
+                    center[2] + blocker_pos_z
+                )
+
                 app.logger.info(f"Generating default cylinder blocker (radius={cylinder_radius}mm, height={cylinder_height}mm)")
                 app.logger.info(f"  Input mesh bounds: min={min_coords}, max={max_coords}")
-                app.logger.info(f"  Positioning blocker at center: {center}")
+                app.logger.info(f"  Center position: {center}")
+                app.logger.info(f"  Position offset: ({blocker_pos_x}, {blocker_pos_y}, {blocker_pos_z})")
+                app.logger.info(f"  Final position: {final_position}")
+                app.logger.info(f"  Rotation: ({blocker_rot_x}, {blocker_rot_y}, {blocker_rot_z}) degrees")
+
                 blocker_mesh = generate_blocker_cylinder(
                     radius=cylinder_radius,
                     height=cylinder_height,
-                    position=tuple(center),
+                    position=final_position,
+                    rotation=(blocker_rot_x, blocker_rot_y, blocker_rot_z),
                     segments=32
                 )
                 app.logger.info(f"Blocker cylinder has {len(blocker_mesh.vectors)} triangles")

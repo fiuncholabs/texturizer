@@ -404,7 +404,7 @@ def generate_test_cube(size=20, object_type=None):
         return generate_simple_cube(size)
 
 
-def generate_blocker_cylinder(radius=10, height=30, position=(0, 0, 0), segments=32):
+def generate_blocker_cylinder(radius=10, height=30, position=(0, 0, 0), rotation=(0, 0, 0), segments=32):
     """
     Generate a cylinder to use as a blocker volume.
 
@@ -412,10 +412,15 @@ def generate_blocker_cylinder(radius=10, height=30, position=(0, 0, 0), segments
         radius: Cylinder radius in mm (default 10mm)
         height: Cylinder height in mm (default 30mm)
         position: (x, y, z) position of cylinder center (default (0, 0, 0))
+        rotation: (rx, ry, rz) rotation in degrees around origin axes X, Y, Z (default (0, 0, 0))
         segments: Number of sides for the cylinder (default 32)
 
     Returns:
         mesh.Mesh object representing a closed cylinder
+
+    Note:
+        Rotation is applied BEFORE translation, so rotation happens around the origin.
+        This matches the UX where rotating the cylinder causes it to orbit around the mesh center.
     """
     # Use trimesh to generate a proper manifold cylinder
     import trimesh
@@ -423,7 +428,42 @@ def generate_blocker_cylinder(radius=10, height=30, position=(0, 0, 0), segments
     # Create cylinder using trimesh (centered at origin, aligned with Z-axis)
     cyl_trimesh = trimesh.creation.cylinder(radius=radius, height=height, sections=segments)
 
-    # Translate to the desired position
+    # Apply rotations FIRST (around origin)
+    # Frontend visualization: Y-up cylinder with rotation.set(rotX, rotZ, -rotY)
+    # Backend: Z-up cylinder that needs equivalent rotations
+    #
+    # Coordinate system relationship: Y-up = Rx(-90°) * Z-up
+    # Frontend applies: Rx(rotX) * Ry(rotZ) * Rz(-rotY) to Y-up cylinder
+    # This is equivalent to: Rx(rotX) * Ry(rotZ) * Rz(-rotY) * Rx(-90°) * Z-up
+    #
+    # To get the same result on Z-up cylinder, we need to find M such that:
+    # Rx(-90°) * M * Z-up = Rx(rotX) * Ry(rotZ) * Rz(-rotY) * Rx(-90°) * Z-up
+    # Therefore: M = Rx(90°) * Rx(rotX) * Ry(rotZ) * Rz(-rotY) * Rx(-90°)
+
+    rx, ry, rz = rotation
+    if rx != 0 or ry != 0 or rz != 0:
+        # Build the compound transformation
+        # Start: convert Z-up to Y-up
+        to_yup = trimesh.transformations.rotation_matrix(np.radians(-90), [1, 0, 0])
+
+        # Apply user rotations in Y-up space (in order: X, then Y, then Z)
+        # Multiply left-to-right: result = Rz * Ry * Rx * point
+        user_transform = np.eye(4)
+        if rx != 0:
+            user_transform = user_transform @ trimesh.transformations.rotation_matrix(np.radians(rx), [1, 0, 0])
+        if rz != 0:
+            user_transform = user_transform @ trimesh.transformations.rotation_matrix(np.radians(rz), [0, 1, 0])
+        if ry != 0:
+            user_transform = user_transform @ trimesh.transformations.rotation_matrix(np.radians(-ry), [0, 0, 1])
+
+        # End: convert Y-up back to Z-up
+        from_yup = trimesh.transformations.rotation_matrix(np.radians(90), [1, 0, 0])
+
+        # Combine: from_yup * user_transform * to_yup
+        transform = from_yup @ user_transform @ to_yup
+        cyl_trimesh.apply_transform(transform)
+
+    # THEN translate to the desired position
     if position != (0, 0, 0):
         transform = trimesh.transformations.translation_matrix(position)
         cyl_trimesh.apply_transform(transform)
