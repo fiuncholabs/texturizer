@@ -940,20 +940,28 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     displaced_vertices = unique_vertices.copy()
 
     # Determine which vertices to process
+    # Start with all vertices enabled
+    process_mask = np.ones(len(unique_vertices), dtype=bool)
+
+    # Apply skip_bottom if enabled
+    if skip_bottom:
+        bottom_mask = unique_vertices[:, 2] > bottom_threshold
+        process_mask &= bottom_mask
+        bottom_skipped = np.sum(~bottom_mask)
+        if bottom_skipped > 0:
+            print(f"Skipping {bottom_skipped} bottom layer vertices")
+
+    # Apply blocker if provided
     if blocker_mesh is not None:
-        # Check which vertices are inside blocker volume
         print("Checking vertices against blocker volume...")
         blocker_mask = point_inside_mesh_volume(unique_vertices, blocker_mesh)
-        process_mask = ~blocker_mask  # Don't process vertices inside blocker
-        skipped_count = np.sum(blocker_mask)
-        if skipped_count > 0:
-            print(f"Blocked {skipped_count} vertices inside blocker volume")
-    elif skip_bottom:
-        process_mask = unique_vertices[:, 2] > bottom_threshold
-        skipped_count = np.sum(~process_mask)
-    else:
-        process_mask = np.ones(len(unique_vertices), dtype=bool)
-        skipped_count = 0
+        process_mask &= ~blocker_mask  # Don't process vertices inside blocker
+        blocker_skipped = np.sum(blocker_mask)
+        if blocker_skipped > 0:
+            print(f"Blocked {blocker_skipped} vertices inside blocker volume")
+
+    # Calculate total skipped count
+    skipped_count = np.sum(~process_mask)
 
     # Get noise values for all vertices to process
     noise_values = np.zeros(len(unique_vertices))
@@ -965,12 +973,9 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     displacement_amounts = (noise_values + 1) * 0.5 * thickness
     displaced_vertices += vertex_normals * displacement_amounts[:, np.newaxis]
 
-    # Zero out displacement for skipped vertices
-    if blocker_mesh is not None or skip_bottom:
+    # Zero out displacement for skipped vertices (bottom layer and/or blocker)
+    if skipped_count > 0:
         displaced_vertices[~process_mask] = unique_vertices[~process_mask]
-
-    if skip_bottom and skipped_count > 0:
-        print(f"Skipped {skipped_count} bottom layer vertices")
 
     # Update mesh with displaced vertices (vectorized)
     print("Updating mesh with displaced vertices...")
