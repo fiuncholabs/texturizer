@@ -1464,8 +1464,13 @@
 
         positionAndRotationInputs.forEach(id => {
             document.getElementById(id).addEventListener('input', () => {
-                if (useBlocker.checked && useDefaultCylinder.checked) {
-                    generateDefaultCylinderPreview();
+                if (useBlocker.checked) {
+                    const type = blockerType.value;
+                    if (type === 'cylinder') {
+                        generateDefaultCylinderPreview();
+                    } else if (type === 'cube') {
+                        generateDefaultCubePreview();
+                    }
                 }
             });
         });
