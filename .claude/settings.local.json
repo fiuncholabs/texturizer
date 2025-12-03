@@ -15,7 +15,8 @@
       "Bash(git rm:*)",
       "Bash(pkill:*)",
       "Bash(kill:*)",
-      "Bash(pip3 list:*)"
+      "Bash(pip3 list:*)",
+      "Bash(git merge:*)"
     ],
     "deny": [],
     "ask": []
