@@ -475,14 +475,69 @@ def process_stl():
 
                 # Load blocker mesh
                 try:
+                    import trimesh
+                    import numpy as np
+
                     blocker_mesh = mesh.Mesh.from_file(tmp_blocker_path)
                     app.logger.info(f"Blocker mesh loaded with {len(blocker_mesh.vectors)} triangles")
+
+                    # Convert to trimesh for transformations
+                    all_verts = blocker_mesh.vectors.reshape(-1, 3)
+                    blocker_trimesh = trimesh.Trimesh(
+                        vertices=all_verts,
+                        faces=np.arange(len(all_verts)).reshape(-1, 3),
+                        process=False
+                    )
 
                     # Apply scale if not 1.0
                     if blocker_scale != 1.0:
                         app.logger.info(f"Applying scale factor of {blocker_scale} to custom blocker")
-                        blocker_mesh.vectors *= blocker_scale
-                        app.logger.info(f"Blocker scaled successfully")
+                        scale_matrix = trimesh.transformations.scale_matrix(blocker_scale)
+                        blocker_trimesh.apply_transform(scale_matrix)
+
+                    # Apply rotation FIRST (same logic as cylinder/cube)
+                    if blocker_rot_x != 0 or blocker_rot_y != 0 or blocker_rot_z != 0:
+                        app.logger.info(f"Applying rotation to custom blocker: X={blocker_rot_x}°, Y={blocker_rot_y}°, Z={blocker_rot_z}°")
+
+                        # Convert Z-up to Y-up
+                        to_yup = trimesh.transformations.rotation_matrix(np.radians(-90), [1, 0, 0])
+
+                        # Apply user rotations in Y-up space
+                        user_transform = np.eye(4)
+                        if blocker_rot_x != 0:
+                            user_transform = user_transform @ trimesh.transformations.rotation_matrix(
+                                np.radians(blocker_rot_x), [1, 0, 0]
+                            )
+                        if blocker_rot_z != 0:
+                            user_transform = user_transform @ trimesh.transformations.rotation_matrix(
+                                np.radians(blocker_rot_z), [0, 1, 0]
+                            )
+                        if blocker_rot_y != 0:
+                            user_transform = user_transform @ trimesh.transformations.rotation_matrix(
+                                np.radians(-blocker_rot_y), [0, 0, 1]
+                            )
+
+                        # Convert Y-up back to Z-up
+                        from_yup = trimesh.transformations.rotation_matrix(np.radians(90), [1, 0, 0])
+
+                        # Combine transformations
+                        rotation_transform = from_yup @ user_transform @ to_yup
+                        blocker_trimesh.apply_transform(rotation_transform)
+
+                    # Apply translation (position calculated earlier with center + offset)
+                    translation = final_position
+                    app.logger.info(f"Applying position to custom blocker: {translation}")
+                    translation_matrix = trimesh.transformations.translation_matrix(translation)
+                    blocker_trimesh.apply_transform(translation_matrix)
+
+                    # Convert back to numpy-stl format
+                    blocker_mesh = mesh.Mesh(np.zeros(len(blocker_trimesh.faces), dtype=mesh.Mesh.dtype))
+                    for i, face in enumerate(blocker_trimesh.faces):
+                        for j in range(3):
+                            blocker_mesh.vectors[i][j] = blocker_trimesh.vertices[face[j]]
+
+                    app.logger.info(f"Custom blocker transformed successfully")
+
                 except Exception as e:
                     app.logger.error(f"Failed to load blocker STL: {str(e)}")
                     return jsonify({'error': f'Invalid blocker STL file: {str(e)}'}), 400
