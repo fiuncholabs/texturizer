@@ -321,7 +321,8 @@ def process_stl():
         use_default_cylinder = request.form.get('use_default_cylinder', 'false').lower() == 'true'
         cylinder_radius = float(request.form.get('cylinder_radius', 10))
         cylinder_height = float(request.form.get('cylinder_height', 30))
-        blocker_algorithm = request.form.get('blocker_algorithm', 'ray_casting')
+        # Always use double_stl algorithm
+        blocker_algorithm = 'double_stl'
 
         # Blocker position and rotation parameters
         blocker_pos_x = float(request.form.get('blocker_pos_x', 0))

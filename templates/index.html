@@ -606,16 +606,8 @@
                     <input type="hidden" id="blockerRotY" value="0">
                     <input type="hidden" id="blockerRotZ" value="0">
 
-                    <div class="form-group">
-                        <label for="blockerAlgorithm">Detection Algorithm</label>
-                        <select id="blockerAlgorithm">
-                            <option value="double_stl" selected>Double STL (Fast & Accurate)</option>
-                            <option value="bounding_box">Bounding Box (Fast)</option>
-                            <option value="bounding_sphere">Bounding Sphere (Fast)</option>
-                            <option value="bounding_cylinder">Bounding Cylinder (Fast)</option>
-                            <option value="ray_casting">Ray Casting (Slow)</option>
-                        </select>
-                    </div>
+                    <!-- Always use double_stl algorithm -->
+                    <input type="hidden" id="blockerAlgorithm" value="double_stl">
                 </div>
 
                 <div id="noiseOptions" class="noise-options">

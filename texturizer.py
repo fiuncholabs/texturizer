@@ -1050,7 +1050,7 @@ def subdivide_triangle(v0, v1, v2, max_edge_length):
 def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                      noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
                      noise_persistence=0.5, skip_bottom=False, skip_small_triangles=False,
-                     blocker_mesh=None, blocker_algorithm='ray_casting'):
+                     blocker_mesh=None, blocker_algorithm='double_stl'):
     """
     Apply fuzzy skin texture to mesh by subdividing and displacing vertices.
 
@@ -1067,12 +1067,7 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
         skip_small_triangles: If True, skip subdivision for triangles with at least one edge < point_distance
         blocker_mesh: mesh.Mesh object representing a blocker volume (optional). Vertices inside this
                       volume will not have fuzzy skin applied.
-        blocker_algorithm: Algorithm for point-in-volume testing:
-                          'ray_casting' - Accurate but slow
-                          'bounding_box' - Fast, conservative
-                          'bounding_sphere' - Fast, conservative
-                          'bounding_cylinder' - Fast for cylinder-shaped blockers
-                          'double_stl' - Split mesh into inside/outside, apply fuzzy only to outside
+        blocker_algorithm: Always 'double_stl' - splits mesh into inside/outside, applies fuzzy only to outside
     """
     np.random.seed(seed)
 
