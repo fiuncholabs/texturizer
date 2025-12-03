@@ -343,6 +343,23 @@ Average input edge length: 2.50mm, target: 0.5mm
 Solution: Increase point_distance to 1.0mm or higher
 ```
 
+### Known Issues & Future Work
+
+**Non-Manifold Edges (Double STL Blocker Algorithm):**
+When using the "double STL" blocker algorithm with CSG boolean operations, the output mesh may contain non-manifold edges that some slicers flag as warnings. Current repair implementation includes:
+- Trimesh vertex merging
+- Normal consistency fixing
+- Hole filling
+- Export/import cycle for additional cleanup
+
+However, some complex boolean operations may still produce non-manifold geometry that requires more robust mesh repair. Most slicers can still process these meshes successfully, but may show warnings.
+
+**Future improvements:**
+- Integrate more advanced mesh repair libraries (e.g., PyMeshLab, Open3D)
+- Implement custom non-manifold edge detection and repair
+- Add post-processing validation to ensure manifold output
+- Consider alternative CSG libraries with better topology handling
+
 ## How It Works
 
 1. **Mesh Subdivision**: The input mesh is subdivided until all edges are smaller than the point distance, creating a denser vertex distribution.

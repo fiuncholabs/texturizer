@@ -227,6 +227,70 @@
             color: #666;
             pointer-events: none;
         }
+        .blocker-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(15, 74, 48, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #3a6b4a;
+            display: none;
+            min-width: 250px;
+            max-height: calc(100% - 20px);
+            overflow-y: auto;
+        }
+        .blocker-controls.visible {
+            display: block;
+        }
+        .blocker-controls-title {
+            margin: 0 0 12px 0;
+            color: #4ade80;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .blocker-control-group {
+            margin-bottom: 12px;
+        }
+        .blocker-control-group label {
+            display: block;
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 4px;
+        }
+        .blocker-control-group input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: #0f4a30;
+            border: 1px solid #3a6b4a;
+            border-radius: 2px;
+            outline: none;
+            margin-bottom: 4px;
+        }
+        .blocker-control-group input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #4ade80;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .blocker-control-group input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: #4ade80;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+        .blocker-value {
+            display: inline-block;
+            min-width: 50px;
+            text-align: right;
+            font-size: 12px;
+            color: #fff;
+            font-family: monospace;
+        }
         .info-section {
             margin-top: 15px;
             padding: 15px;
@@ -482,6 +546,78 @@
                     </label>
                 </div>
 
+                <div class="section-title">Blocker Volume</div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="useBlocker">
+                        Use blocker volume
+                    </label>
+                </div>
+
+                <div id="blockerVisibilitySection" style="display:none">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showBlocker" checked>
+                            Show blocker in viewer
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showIntersection" checked>
+                            Show intersection (yellow) mesh
+                        </label>
+                    </div>
+                </div>
+
+                <div id="blockerSection" style="display:none">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="useDefaultCylinder" checked>
+                            Use default cylinder
+                        </label>
+                    </div>
+
+                    <div id="blockerUploadSection" style="display:none">
+                        <div class="form-group">
+                            <div class="file-input-wrapper">
+                                <div class="file-input-btn">Choose Blocker STL</div>
+                                <input type="file" id="blockerFile" accept=".stl">
+                            </div>
+                            <div id="blockerFileName" class="file-name">No blocker file selected</div>
+                        </div>
+                    </div>
+
+                    <div id="cylinderOptions">
+                        <div class="form-group">
+                            <label for="cylinderRadius">Cylinder Radius (mm)</label>
+                            <input type="number" id="cylinderRadius" value="5" min="1" max="100" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="cylinderHeight">Cylinder Height (mm)</label>
+                            <input type="number" id="cylinderHeight" value="25" min="1" max="200" step="1">
+                        </div>
+                    </div>
+
+                    <!-- Hidden inputs for position and rotation (synced with overlay sliders) -->
+                    <input type="hidden" id="blockerPosX" value="0">
+                    <input type="hidden" id="blockerPosY" value="0">
+                    <input type="hidden" id="blockerPosZ" value="0">
+                    <input type="hidden" id="blockerRotX" value="0">
+                    <input type="hidden" id="blockerRotY" value="0">
+                    <input type="hidden" id="blockerRotZ" value="0">
+
+                    <div class="form-group">
+                        <label for="blockerAlgorithm">Detection Algorithm</label>
+                        <select id="blockerAlgorithm">
+                            <option value="double_stl" selected>Double STL (Fast & Accurate)</option>
+                            <option value="bounding_box">Bounding Box (Fast)</option>
+                            <option value="bounding_sphere">Bounding Sphere (Fast)</option>
+                            <option value="bounding_cylinder">Bounding Cylinder (Fast)</option>
+                            <option value="ray_casting">Ray Casting (Slow)</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div id="noiseOptions" class="noise-options">
                     <div class="form-group">
                         <label for="noiseScale">Noise Scale</label>
@@ -530,6 +666,49 @@
             <div class="viewer-container">
                 <div id="viewer"></div>
                 <div class="viewer-hint">Drag to rotate, scroll to zoom</div>
+
+                <!-- Blocker Controls Overlay -->
+                <div class="blocker-controls" id="blockerControlsOverlay">
+                    <div class="blocker-controls-title">Blocker Position</div>
+
+                    <div class="blocker-control-group">
+                        <label>Position X</label>
+                        <input type="range" id="blockerPosXSlider" min="-200" max="200" value="0" step="1">
+                        <span class="blocker-value" id="blockerPosXValue">0</span>
+                    </div>
+
+                    <div class="blocker-control-group">
+                        <label>Position Y</label>
+                        <input type="range" id="blockerPosYSlider" min="-200" max="200" value="0" step="1">
+                        <span class="blocker-value" id="blockerPosYValue">0</span>
+                    </div>
+
+                    <div class="blocker-control-group">
+                        <label>Position Z</label>
+                        <input type="range" id="blockerPosZSlider" min="-200" max="200" value="0" step="1">
+                        <span class="blocker-value" id="blockerPosZValue">0</span>
+                    </div>
+
+                    <div class="blocker-controls-title" style="margin-top: 15px;">Blocker Rotation</div>
+
+                    <div class="blocker-control-group">
+                        <label>Rotation X</label>
+                        <input type="range" id="blockerRotXSlider" min="-180" max="180" value="0" step="15">
+                        <span class="blocker-value" id="blockerRotXValue">0°</span>
+                    </div>
+
+                    <div class="blocker-control-group">
+                        <label>Rotation Y</label>
+                        <input type="range" id="blockerRotYSlider" min="-180" max="180" value="0" step="15">
+                        <span class="blocker-value" id="blockerRotYValue">0°</span>
+                    </div>
+
+                    <div class="blocker-control-group">
+                        <label>Rotation Z</label>
+                        <input type="range" id="blockerRotZSlider" min="-180" max="180" value="0" step="15">
+                        <span class="blocker-value" id="blockerRotZValue">0°</span>
+                    </div>
+                </div>
 
                 <div class="info-section">
                     <button class="info-toggle" onclick="toggleInfo()">
@@ -631,7 +810,9 @@
         }
 
         // Three.js setup
-        let scene, camera, renderer, controls, currentMesh;
+        let scene, camera, renderer, controls, currentMesh, blockerMesh;
+        let uploadedBlockerFile = null;
+        let currentSplitMetadata = null;  // Track split metadata for intersection hiding
         const viewerContainer = document.getElementById('viewer');
 
         function initViewer() {
@@ -686,7 +867,7 @@
             renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
         }
 
-        function loadSTL(arrayBuffer) {
+        function loadSTL(arrayBuffer, splitMetadata = null) {
             if (currentMesh) {
                 scene.remove(currentMesh);
             }
@@ -694,16 +875,62 @@
             const loader = new THREE.STLLoader();
             const geometry = loader.parse(arrayBuffer);
 
-            const material = new THREE.MeshPhongMaterial({
-                color: 0x4ade80,
-                specular: 0x111111,
-                shininess: 200
-            });
-
-            currentMesh = new THREE.Mesh(geometry, material);
-
             // Rotate to match slicer convention (STL uses Z-up, Three.js uses Y-up)
             geometry.rotateX(-Math.PI / 2);
+
+            // Check if we need dual-color rendering (for double_stl algorithm)
+            if (splitMetadata && splitMetadata.splitIndex > 0) {
+                // Create vertex colors for dual-color rendering
+                const positions = geometry.attributes.position;
+                const colors = new Float32Array(positions.count * 3);
+
+                // Green for outside (processed), Yellow for inside (unprocessed)
+                const greenColor = new THREE.Color(0x4ade80);  // Green
+                const yellowColor = new THREE.Color(0xffd700); // Yellow/Gold
+
+                // Each triangle has 3 vertices
+                const splitIndex = splitMetadata.splitIndex;
+                for (let i = 0; i < positions.count / 3; i++) {
+                    const triangleIndex = i;
+                    const color = triangleIndex < splitIndex ? greenColor : yellowColor;
+
+                    // Set color for all 3 vertices of this triangle
+                    for (let j = 0; j < 3; j++) {
+                        const vertexIndex = i * 3 + j;
+                        colors[vertexIndex * 3] = color.r;
+                        colors[vertexIndex * 3 + 1] = color.g;
+                        colors[vertexIndex * 3 + 2] = color.b;
+                    }
+                }
+
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+                // Material with vertex colors
+                const material = new THREE.MeshPhongMaterial({
+                    vertexColors: true,
+                    specular: 0x111111,
+                    shininess: 200
+                });
+
+                currentMesh = new THREE.Mesh(geometry, material);
+
+                // Store split metadata for intersection hiding
+                currentSplitMetadata = splitMetadata;
+
+                console.log(`Dual-color rendering: ${splitMetadata.outsideCount} green triangles (outside), ${splitMetadata.insideCount} yellow triangles (inside)`);
+            } else {
+                // Single color rendering (default green)
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x4ade80,
+                    specular: 0x111111,
+                    shininess: 200
+                });
+
+                currentMesh = new THREE.Mesh(geometry, material);
+
+                // Clear split metadata for non-split meshes
+                currentSplitMetadata = null;
+            }
 
             // Center horizontally and place on grid (bottom at y=0)
             geometry.computeBoundingBox();
@@ -721,6 +948,159 @@
             controls.update();
 
             scene.add(currentMesh);
+        }
+
+        function loadBlockerSTL(arrayBuffer) {
+            if (blockerMesh) {
+                scene.remove(blockerMesh);
+            }
+
+            const loader = new THREE.STLLoader();
+            const geometry = loader.parse(arrayBuffer);
+
+            // Semi-transparent red material for blocker
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xff4757,
+                transparent: true,
+                opacity: 0.5,
+                side: THREE.DoubleSide
+            });
+
+            blockerMesh = new THREE.Mesh(geometry, material);
+
+            // Rotate to match slicer convention
+            geometry.rotateX(-Math.PI / 2);
+
+            // Center on grid
+            geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            const minY = geometry.boundingBox.min.y;
+            blockerMesh.position.set(-center.x, -minY, -center.z);
+
+            scene.add(blockerMesh);
+        }
+
+        function toggleIntersectionVisibility(show) {
+            if (!currentMesh || !currentSplitMetadata) {
+                return;  // No split mesh loaded
+            }
+
+            const geometry = currentMesh.geometry;
+            const colorAttribute = geometry.getAttribute('color');
+
+            if (!colorAttribute) {
+                return;  // No vertex colors
+            }
+
+            const colors = colorAttribute.array;
+            const splitIndex = currentSplitMetadata.splitIndex;
+            const greenColor = new THREE.Color(0x4ade80);
+            const yellowColor = new THREE.Color(0xffd700);
+            const transparentColor = new THREE.Color(0x000000);  // Will be made invisible
+
+            // Update colors for yellow (inside) triangles
+            for (let i = 0; i < geometry.attributes.position.count / 3; i++) {
+                const triangleIndex = i;
+
+                if (triangleIndex >= splitIndex) {
+                    // This is a yellow (inside) triangle
+                    const color = show ? yellowColor : greenColor;  // When hiding, make them green to blend
+
+                    for (let j = 0; j < 3; j++) {
+                        const vertexIndex = i * 3 + j;
+                        if (show) {
+                            colors[vertexIndex * 3] = yellowColor.r;
+                            colors[vertexIndex * 3 + 1] = yellowColor.g;
+                            colors[vertexIndex * 3 + 2] = yellowColor.b;
+                        } else {
+                            // Make transparent by setting alpha in material
+                            colors[vertexIndex * 3] = 0;
+                            colors[vertexIndex * 3 + 1] = 0;
+                            colors[vertexIndex * 3 + 2] = 0;
+                        }
+                    }
+                }
+            }
+
+            colorAttribute.needsUpdate = true;
+
+            // Enable/disable transparency in material
+            currentMesh.material.transparent = !show;
+            if (!show) {
+                currentMesh.material.opacity = 0.99;  // Slight transparency to hide black triangles
+            } else {
+                currentMesh.material.opacity = 1.0;
+            }
+        }
+
+        function generateDefaultCylinderPreview() {
+            const radius = parseFloat(document.getElementById('cylinderRadius').value);
+            const height = parseFloat(document.getElementById('cylinderHeight').value);
+
+            // Get position and rotation offsets
+            const posX = parseFloat(document.getElementById('blockerPosX').value);
+            const posY = parseFloat(document.getElementById('blockerPosY').value);
+            const posZ = parseFloat(document.getElementById('blockerPosZ').value);
+            const rotX = parseFloat(document.getElementById('blockerRotX').value) * Math.PI / 180; // Convert to radians
+            const rotY = parseFloat(document.getElementById('blockerRotY').value) * Math.PI / 180;
+            const rotZ = parseFloat(document.getElementById('blockerRotZ').value) * Math.PI / 180;
+
+            // Remove existing blocker
+            if (blockerMesh) {
+                scene.remove(blockerMesh);
+            }
+
+            // Create cylinder geometry in Three.js
+            const geometry = new THREE.CylinderGeometry(radius, radius, height, 32);
+
+            // Semi-transparent red material
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xff4757,
+                transparent: true,
+                opacity: 0.5,
+                side: THREE.DoubleSide
+            });
+
+            blockerMesh = new THREE.Mesh(geometry, material);
+
+            // Position blocker at the center of the visible mesh
+            // The backend positions the blocker at the mesh center in STL coordinates (Z-up)
+            // After rotation to Y-up and centering, the blocker should be at (0, centerY, 0)
+            // where centerY is the vertical center of the mesh bounds
+            if (currentMesh && currentMesh.geometry.boundingBox) {
+                const bbox = currentMesh.geometry.boundingBox;
+                const meshCenter = new THREE.Vector3();
+                bbox.getCenter(meshCenter);
+
+                // The currentMesh is already positioned, so we need to account for that
+                const worldCenter = meshCenter.clone().add(currentMesh.position);
+
+                // Apply position offset (STL coordinates are Z-up, Three.js is Y-up)
+                // STL: X=X, Y=Y, Z=Z -> Three.js: X=X, Y=Z, Z=-Y
+                blockerMesh.position.set(
+                    worldCenter.x + posX,
+                    worldCenter.y + posZ,  // STL Z -> Three.js Y
+                    worldCenter.z - posY   // STL Y -> Three.js -Z
+                );
+            } else {
+                // Fallback: position at origin with offsets
+                blockerMesh.position.set(posX, posZ, -posY);
+            }
+
+            // Apply rotation (in order: X, Y, Z)
+            // Note: Three.js uses Y-up, so we need to adjust rotation axes
+            // STL rotations (Z-up) need to be converted to Three.js (Y-up)
+            blockerMesh.rotation.set(rotX, rotZ, -rotY);
+
+            scene.add(blockerMesh);
+        }
+
+        function removeBlocker() {
+            if (blockerMesh) {
+                scene.remove(blockerMesh);
+                blockerMesh = null;
+            }
         }
 
         function rotateModel(axis, degrees) {
@@ -891,6 +1271,11 @@
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     loadSTL(event.target.result);
+
+                    // Update blocker preview if blocker is enabled
+                    if (useBlocker.checked && useDefaultCylinder.checked) {
+                        generateDefaultCylinderPreview();
+                    }
                 };
                 reader.readAsArrayBuffer(file);
 
@@ -908,6 +1293,150 @@
         });
 
         resetViewBtn.addEventListener('click', resetView);
+
+        // Blocker controls event handlers
+        const useBlocker = document.getElementById('useBlocker');
+        const blockerSection = document.getElementById('blockerSection');
+        const blockerVisibilitySection = document.getElementById('blockerVisibilitySection');
+        const showBlocker = document.getElementById('showBlocker');
+        const useDefaultCylinder = document.getElementById('useDefaultCylinder');
+        const blockerUploadSection = document.getElementById('blockerUploadSection');
+        const cylinderOptions = document.getElementById('cylinderOptions');
+        const blockerFileInput = document.getElementById('blockerFile');
+        const cylinderRadius = document.getElementById('cylinderRadius');
+        const cylinderHeight = document.getElementById('cylinderHeight');
+
+        useBlocker.addEventListener('change', (e) => {
+            blockerSection.style.display = e.target.checked ? 'block' : 'none';
+            blockerVisibilitySection.style.display = e.target.checked ? 'block' : 'none';
+            if (e.target.checked && useDefaultCylinder.checked) {
+                generateDefaultCylinderPreview();
+            } else if (!e.target.checked) {
+                removeBlocker();
+            }
+        });
+
+        showBlocker.addEventListener('change', (e) => {
+            if (blockerMesh) {
+                blockerMesh.visible = e.target.checked;
+            }
+        });
+
+        const showIntersection = document.getElementById('showIntersection');
+        showIntersection.addEventListener('change', (e) => {
+            toggleIntersectionVisibility(e.target.checked);
+        });
+
+        useDefaultCylinder.addEventListener('change', (e) => {
+            blockerUploadSection.style.display = e.target.checked ? 'none' : 'block';
+            cylinderOptions.style.display = e.target.checked ? 'block' : 'none';
+
+            if (e.target.checked) {
+                generateDefaultCylinderPreview();
+            } else {
+                removeBlocker();
+                uploadedBlockerFile = null;
+            }
+        });
+
+        cylinderRadius.addEventListener('input', () => {
+            if (useBlocker.checked && useDefaultCylinder.checked) {
+                generateDefaultCylinderPreview();
+            }
+        });
+
+        cylinderHeight.addEventListener('input', () => {
+            if (useBlocker.checked && useDefaultCylinder.checked) {
+                generateDefaultCylinderPreview();
+            }
+        });
+
+        // Position and rotation control event listeners
+        const positionAndRotationInputs = [
+            'blockerPosX', 'blockerPosY', 'blockerPosZ',
+            'blockerRotX', 'blockerRotY', 'blockerRotZ'
+        ];
+
+        positionAndRotationInputs.forEach(id => {
+            document.getElementById(id).addEventListener('input', () => {
+                if (useBlocker.checked && useDefaultCylinder.checked) {
+                    generateDefaultCylinderPreview();
+                }
+            });
+        });
+
+        // Blocker controls overlay - sync sliders with sidebar inputs
+        const blockerControlsOverlay = document.getElementById('blockerControlsOverlay');
+
+        // Function to update overlay visibility
+        function updateBlockerControlsVisibility() {
+            if (useBlocker.checked && useDefaultCylinder.checked) {
+                blockerControlsOverlay.classList.add('visible');
+            } else {
+                blockerControlsOverlay.classList.remove('visible');
+            }
+        }
+
+        // Update visibility when blocker or cylinder options change
+        useBlocker.addEventListener('change', updateBlockerControlsVisibility);
+        useDefaultCylinder.addEventListener('change', updateBlockerControlsVisibility);
+
+        // Sync sliders with sidebar inputs
+        const sliderMappings = [
+            { slider: 'blockerPosXSlider', input: 'blockerPosX', display: 'blockerPosXValue', unit: '' },
+            { slider: 'blockerPosYSlider', input: 'blockerPosY', display: 'blockerPosYValue', unit: '' },
+            { slider: 'blockerPosZSlider', input: 'blockerPosZ', display: 'blockerPosZValue', unit: '' },
+            { slider: 'blockerRotXSlider', input: 'blockerRotX', display: 'blockerRotXValue', unit: '°' },
+            { slider: 'blockerRotYSlider', input: 'blockerRotY', display: 'blockerRotYValue', unit: '°' },
+            { slider: 'blockerRotZSlider', input: 'blockerRotZ', display: 'blockerRotZValue', unit: '°' }
+        ];
+
+        sliderMappings.forEach(mapping => {
+            const slider = document.getElementById(mapping.slider);
+            const input = document.getElementById(mapping.input);
+            const display = document.getElementById(mapping.display);
+
+            // When slider changes, update both sidebar input and display
+            slider.addEventListener('input', () => {
+                const value = slider.value;
+                input.value = value;
+                display.textContent = value + mapping.unit;
+
+                // Trigger preview update
+                if (useBlocker.checked && useDefaultCylinder.checked) {
+                    generateDefaultCylinderPreview();
+                }
+            });
+
+            // When sidebar input changes, update slider and display
+            input.addEventListener('input', () => {
+                const value = input.value;
+                slider.value = value;
+                display.textContent = value + mapping.unit;
+            });
+
+            // Initialize display values
+            display.textContent = input.value + mapping.unit;
+        });
+
+        blockerFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                uploadedBlockerFile = file;
+                document.getElementById('blockerFileName').textContent = file.name;
+
+                // Load and preview the blocker STL
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    loadBlockerSTL(event.target.result);
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                uploadedBlockerFile = null;
+                document.getElementById('blockerFileName').textContent = 'No blocker file selected';
+                removeBlocker();
+            }
+        });
 
         downloadBtn.addEventListener('click', () => {
             if (!processedBlob) return;
@@ -1062,6 +1591,30 @@
             formData.append('skip_bottom', document.getElementById('skipBottom').checked);
             formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
 
+            // Blocker parameters
+            if (useBlocker.checked) {
+                formData.append('use_blocker', 'true');
+                formData.append('blocker_algorithm', document.getElementById('blockerAlgorithm').value);
+
+                // Position parameters
+                formData.append('blocker_pos_x', document.getElementById('blockerPosX').value);
+                formData.append('blocker_pos_y', document.getElementById('blockerPosY').value);
+                formData.append('blocker_pos_z', document.getElementById('blockerPosZ').value);
+
+                // Rotation parameters
+                formData.append('blocker_rot_x', document.getElementById('blockerRotX').value);
+                formData.append('blocker_rot_y', document.getElementById('blockerRotY').value);
+                formData.append('blocker_rot_z', document.getElementById('blockerRotZ').value);
+
+                if (useDefaultCylinder.checked) {
+                    formData.append('use_default_cylinder', 'true');
+                    formData.append('cylinder_radius', cylinderRadius.value);
+                    formData.append('cylinder_height', cylinderHeight.value);
+                } else if (uploadedBlockerFile) {
+                    formData.append('blocker_file', uploadedBlockerFile);
+                }
+            }
+
             try {
                 const response = await fetch('/api/process', {
                     method: 'POST',
@@ -1099,9 +1652,24 @@
                 processedBlob = await response.blob();
                 processedFilename = filename;
 
-                // Load processed model in viewer
+                // Extract split metadata if using double_stl algorithm
+                let splitMetadata = null;
+                const splitIndex = response.headers.get('X-Split-Index');
+                const outsideCount = response.headers.get('X-Outside-Count');
+                const insideCount = response.headers.get('X-Inside-Count');
+
+                if (splitIndex && outsideCount && insideCount) {
+                    splitMetadata = {
+                        splitIndex: parseInt(splitIndex),
+                        outsideCount: parseInt(outsideCount),
+                        insideCount: parseInt(insideCount)
+                    };
+                    console.log('Double STL metadata:', splitMetadata);
+                }
+
+                // Load processed model in viewer with dual-color support
                 const arrayBuffer = await processedBlob.arrayBuffer();
-                loadSTL(arrayBuffer);
+                loadSTL(arrayBuffer, splitMetadata);
 
                 // Enable download button
                 downloadBtn.disabled = false;

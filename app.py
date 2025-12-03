@@ -23,6 +23,7 @@ import numpy as np
 from texturizer import (
     apply_fuzzy_skin,
     generate_test_cube,
+    generate_blocker_cylinder,
     estimate_output_size,
     check_processing_feasibility,
     NOISE_TYPES,
@@ -299,6 +300,7 @@ def process_stl():
 
     tmp_input_path = None
     tmp_output_path = None
+    tmp_blocker_path = None
 
     try:
         # Get parameters
@@ -314,9 +316,25 @@ def process_stl():
         use_default_cube = request.form.get('use_default_cube', 'false').lower() == 'true'
         cube_size = float(request.form.get('cube_size', 20))
 
+        # Blocker parameters
+        use_blocker = request.form.get('use_blocker', 'false').lower() == 'true'
+        use_default_cylinder = request.form.get('use_default_cylinder', 'false').lower() == 'true'
+        cylinder_radius = float(request.form.get('cylinder_radius', 10))
+        cylinder_height = float(request.form.get('cylinder_height', 30))
+        blocker_algorithm = request.form.get('blocker_algorithm', 'ray_casting')
+
+        # Blocker position and rotation parameters
+        blocker_pos_x = float(request.form.get('blocker_pos_x', 0))
+        blocker_pos_y = float(request.form.get('blocker_pos_y', 0))
+        blocker_pos_z = float(request.form.get('blocker_pos_z', 0))
+        blocker_rot_x = float(request.form.get('blocker_rot_x', 0))
+        blocker_rot_y = float(request.form.get('blocker_rot_y', 0))
+        blocker_rot_z = float(request.form.get('blocker_rot_z', 0))
+
         app.logger.info(f"Processing request - use_default_cube={use_default_cube}, "
                        f"thickness={thickness}, point_distance={point_distance}, "
-                       f"noise_type={noise_type}")
+                       f"noise_type={noise_type}, use_blocker={use_blocker}, "
+                       f"blocker_algorithm={blocker_algorithm}")
 
         # Validate noise type
         if noise_type not in NOISE_TYPES:
@@ -374,6 +392,65 @@ def process_stl():
         # Log mesh info
         app.logger.info(f"Input mesh has {len(input_mesh.vectors)} triangles")
 
+        # Handle blocker mesh
+        blocker_mesh = None
+        if use_blocker:
+            if use_default_cylinder:
+                # Calculate the center of the input mesh for blocker positioning
+                min_coords = input_mesh.vectors.min(axis=(0, 1))
+                max_coords = input_mesh.vectors.max(axis=(0, 1))
+                center = (min_coords + max_coords) / 2
+
+                # Generate default cylinder blocker with position and rotation
+                # Apply user-specified offset to the center position
+                final_position = (
+                    center[0] + blocker_pos_x,
+                    center[1] + blocker_pos_y,
+                    center[2] + blocker_pos_z
+                )
+
+                app.logger.info(f"Generating default cylinder blocker (radius={cylinder_radius}mm, height={cylinder_height}mm)")
+                app.logger.info(f"  Input mesh bounds: min={min_coords}, max={max_coords}")
+                app.logger.info(f"  Center position: {center}")
+                app.logger.info(f"  Position offset: ({blocker_pos_x}, {blocker_pos_y}, {blocker_pos_z})")
+                app.logger.info(f"  Final position: {final_position}")
+                app.logger.info(f"  Rotation: ({blocker_rot_x}, {blocker_rot_y}, {blocker_rot_z}) degrees")
+
+                blocker_mesh = generate_blocker_cylinder(
+                    radius=cylinder_radius,
+                    height=cylinder_height,
+                    position=final_position,
+                    rotation=(blocker_rot_x, blocker_rot_y, blocker_rot_z),
+                    segments=32
+                )
+                app.logger.info(f"Blocker cylinder has {len(blocker_mesh.vectors)} triangles")
+            else:
+                # Load custom blocker STL
+                if 'blocker_file' not in request.files:
+                    return jsonify({'error': 'Blocker enabled but no blocker file uploaded'}), 400
+
+                blocker_file = request.files['blocker_file']
+                if blocker_file.filename == '':
+                    return jsonify({'error': 'Blocker enabled but no blocker file selected'}), 400
+
+                if not blocker_file.filename.lower().endswith('.stl'):
+                    return jsonify({'error': 'Blocker file must be an STL'}), 400
+
+                app.logger.info(f"Loading blocker file: {blocker_file.filename}")
+
+                # Save blocker file temporarily
+                with tempfile.NamedTemporaryFile(suffix='.stl', delete=False) as tmp_blocker:
+                    blocker_file.save(tmp_blocker.name)
+                    tmp_blocker_path = tmp_blocker.name
+
+                # Load blocker mesh
+                try:
+                    blocker_mesh = mesh.Mesh.from_file(tmp_blocker_path)
+                    app.logger.info(f"Blocker mesh has {len(blocker_mesh.vectors)} triangles")
+                except Exception as e:
+                    app.logger.error(f"Failed to load blocker STL: {str(e)}")
+                    return jsonify({'error': f'Invalid blocker STL file: {str(e)}'}), 400
+
         # If thickness is 0, skip processing and return the input mesh as-is (for preview)
         if thickness == 0:
             app.logger.info("Thickness is 0 - returning unprocessed mesh for preview")
@@ -421,7 +498,9 @@ def process_stl():
                     noise_octaves=noise_octaves,
                     noise_persistence=noise_persistence,
                     skip_bottom=skip_bottom,
-                    skip_small_triangles=skip_small_triangles
+                    skip_small_triangles=skip_small_triangles,
+                    blocker_mesh=blocker_mesh,
+                    blocker_algorithm=blocker_algorithm
                 )
                 app.logger.info(f"Output mesh has {len(output_mesh.vectors)} triangles")
             except MemoryError:
@@ -445,12 +524,27 @@ def process_stl():
 
         app.logger.info(f"Successfully processed - output size: {len(output_data) / 1024:.1f} KB")
 
-        return send_file(
+        # Create response with STL file
+        response = send_file(
             io.BytesIO(output_data),
             mimetype='application/octet-stream',
             as_attachment=True,
             download_name=output_filename
         )
+
+        # Add metadata headers if using double_stl algorithm
+        if use_blocker and blocker_algorithm == 'double_stl' and hasattr(output_mesh, 'metadata'):
+            split_index = output_mesh.metadata.get('split_index', 0)
+            outside_count = output_mesh.metadata.get('outside_count', 0)
+            inside_count = output_mesh.metadata.get('inside_count', 0)
+
+            response.headers['X-Split-Index'] = str(split_index)
+            response.headers['X-Outside-Count'] = str(outside_count)
+            response.headers['X-Inside-Count'] = str(inside_count)
+
+            app.logger.info(f"Added split metadata headers: split_index={split_index}, outside={outside_count}, inside={inside_count}")
+
+        return response
 
     except Exception as e:
         app.logger.error(f"Unexpected error: {str(e)}", exc_info=True)
@@ -469,6 +563,12 @@ def process_stl():
                 os.unlink(tmp_output_path)
             except Exception as e:
                 app.logger.warning(f"Failed to delete temp output file: {e}")
+
+        if tmp_blocker_path and os.path.exists(tmp_blocker_path):
+            try:
+                os.unlink(tmp_blocker_path)
+            except Exception as e:
+                app.logger.warning(f"Failed to delete temp blocker file: {e}")
 
 
 # Error handlers

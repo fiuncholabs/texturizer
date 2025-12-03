@@ -79,13 +79,16 @@ class TestProductionDeployment(unittest.TestCase):
 
         result = response.json()
         self.assertIn('feasible', result, "Should indicate if processing is possible")
-        self.assertIn('estimates', result, "Should include time estimate")
-        self.assertIn('estimates', result, "Should include triangle count estimate")
+        self.assertIn('estimates', result, "Should include estimates")
+
+        estimates = result['estimates']
+        self.assertIn('estimated_time_seconds', estimates, "Should include time estimate")
+        self.assertIn('estimated_triangles', estimates, "Should include triangle count estimate")
 
         print(f"✓ Estimate completed in {estimate_time:.2f}s")
         print(f"  Can process: {result['feasible']}")
-        print(f"  Estimated time: {result['estimates']['estimated_time_seconds']:.1f}s")
-        print(f"  Estimated triangles: {result['estimates']['estimated_triangles']:,}")
+        print(f"  Estimated time: {estimates['estimated_time_seconds']:.1f}s")
+        print(f"  Estimated triangles: {estimates['estimated_triangles']:,}")
 
         # Store for next test
         self.__class__.basic_estimate = result
@@ -120,7 +123,7 @@ class TestProductionDeployment(unittest.TestCase):
         self.assertTrue(
             estimate['feasible'],
             f"Estimate should indicate fuzzy skin variant is processable. "
-            f"Estimated triangles: {estimate.get('estimates', {}).get('estimated_triangles', 'unknown')}"
+            f"Estimated triangles: {estimate['estimates'].get('estimated_triangles', 'unknown')}"
         )
 
         print(f"✓ Estimate confirms fuzzy skin variant can be processed")
@@ -218,10 +221,10 @@ class TestProductionDeployment(unittest.TestCase):
 
         print(f"✓ Fine detail estimate completed")
         print(f"  Can process: {estimate['feasible']}")
-        print(f"  Estimated triangles: {estimate.get('estimates', {}).get('estimated_triangles', 0):,}")
-        print(f"  Estimated time: {estimate.get('estimates', {}).get('estimated_time_seconds', 0):.1f}s")
-
-        if not estimate['feasible']:
+        if estimate['feasible']:
+            print(f"  Estimated triangles: {estimate['estimates'].get('estimated_triangles', 0):,}")
+            print(f"  Estimated time: {estimate['estimates'].get('estimated_time_seconds', 0):.1f}s")
+        else:
             print(f"  Reason: {estimate.get('reason', 'Unknown')}")
 
         # Store for reference

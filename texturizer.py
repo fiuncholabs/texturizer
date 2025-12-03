@@ -404,6 +404,409 @@ def generate_test_cube(size=20, object_type=None):
         return generate_simple_cube(size)
 
 
+def generate_blocker_cylinder(radius=10, height=30, position=(0, 0, 0), rotation=(0, 0, 0), segments=32):
+    """
+    Generate a cylinder to use as a blocker volume.
+
+    Args:
+        radius: Cylinder radius in mm (default 10mm)
+        height: Cylinder height in mm (default 30mm)
+        position: (x, y, z) position of cylinder center (default (0, 0, 0))
+        rotation: (rx, ry, rz) rotation in degrees around origin axes X, Y, Z (default (0, 0, 0))
+        segments: Number of sides for the cylinder (default 32)
+
+    Returns:
+        mesh.Mesh object representing a closed cylinder
+
+    Note:
+        Rotation is applied BEFORE translation, so rotation happens around the origin.
+        This matches the UX where rotating the cylinder causes it to orbit around the mesh center.
+    """
+    # Use trimesh to generate a proper manifold cylinder
+    import trimesh
+
+    # Create cylinder using trimesh (centered at origin, aligned with Z-axis)
+    cyl_trimesh = trimesh.creation.cylinder(radius=radius, height=height, sections=segments)
+
+    # Apply rotations FIRST (around origin)
+    # Frontend visualization: Y-up cylinder with rotation.set(rotX, rotZ, -rotY)
+    # Backend: Z-up cylinder that needs equivalent rotations
+    #
+    # Coordinate system relationship: Y-up = Rx(-90°) * Z-up
+    # Frontend applies: Rx(rotX) * Ry(rotZ) * Rz(-rotY) to Y-up cylinder
+    # This is equivalent to: Rx(rotX) * Ry(rotZ) * Rz(-rotY) * Rx(-90°) * Z-up
+    #
+    # To get the same result on Z-up cylinder, we need to find M such that:
+    # Rx(-90°) * M * Z-up = Rx(rotX) * Ry(rotZ) * Rz(-rotY) * Rx(-90°) * Z-up
+    # Therefore: M = Rx(90°) * Rx(rotX) * Ry(rotZ) * Rz(-rotY) * Rx(-90°)
+
+    rx, ry, rz = rotation
+    if rx != 0 or ry != 0 or rz != 0:
+        # Build the compound transformation
+        # Start: convert Z-up to Y-up
+        to_yup = trimesh.transformations.rotation_matrix(np.radians(-90), [1, 0, 0])
+
+        # Apply user rotations in Y-up space (in order: X, then Y, then Z)
+        # Multiply left-to-right: result = Rz * Ry * Rx * point
+        user_transform = np.eye(4)
+        if rx != 0:
+            user_transform = user_transform @ trimesh.transformations.rotation_matrix(np.radians(rx), [1, 0, 0])
+        if rz != 0:
+            user_transform = user_transform @ trimesh.transformations.rotation_matrix(np.radians(rz), [0, 1, 0])
+        if ry != 0:
+            user_transform = user_transform @ trimesh.transformations.rotation_matrix(np.radians(-ry), [0, 0, 1])
+
+        # End: convert Y-up back to Z-up
+        from_yup = trimesh.transformations.rotation_matrix(np.radians(90), [1, 0, 0])
+
+        # Combine: from_yup * user_transform * to_yup
+        transform = from_yup @ user_transform @ to_yup
+        cyl_trimesh.apply_transform(transform)
+
+    # THEN translate to the desired position
+    if position != (0, 0, 0):
+        transform = trimesh.transformations.translation_matrix(position)
+        cyl_trimesh.apply_transform(transform)
+
+    # Convert to numpy-stl format
+    cylinder = mesh.Mesh(np.zeros(len(cyl_trimesh.faces), dtype=mesh.Mesh.dtype))
+    for i, face in enumerate(cyl_trimesh.faces):
+        for j in range(3):
+            cylinder.vectors[i][j] = cyl_trimesh.vertices[face[j]]
+
+    return cylinder
+
+
+def point_inside_mesh_volume(points, blocker_mesh, algorithm='ray_casting'):
+    """
+    Check if points are inside a blocker mesh volume.
+
+    Args:
+        points: Nx3 numpy array of vertex positions
+        blocker_mesh: mesh.Mesh object (blocker volume)
+        algorithm: Algorithm to use for point-in-volume testing:
+                   'ray_casting' - Accurate for any closed mesh (default)
+                   'bounding_box' - Fast, conservative (rectangular bounds)
+                   'bounding_sphere' - Fast, conservative (spherical bounds)
+                   'bounding_cylinder' - Fast, for cylinder-shaped blockers
+
+    Returns:
+        Boolean array of length N (True if inside volume)
+    """
+    if algorithm == 'ray_casting':
+        # Ray casting: cast ray from point, count intersections with mesh
+        # Odd number of intersections = inside, even = outside
+        # This is the most accurate method for arbitrary closed meshes
+
+        all_triangles = blocker_mesh.vectors
+        inside = np.zeros(len(points), dtype=bool)
+
+        # Ray direction: along +X axis (arbitrary choice)
+        ray_dir = np.array([1.0, 0.0, 0.0])
+
+        for idx, point in enumerate(points):
+            intersection_count = 0
+
+            # Check intersection with each triangle
+            for tri in all_triangles:
+                v0, v1, v2 = tri
+
+                # Möller–Trumbore ray-triangle intersection algorithm
+                edge1 = v1 - v0
+                edge2 = v2 - v0
+                h = np.cross(ray_dir, edge2)
+                a = np.dot(edge1, h)
+
+                # Ray is parallel to triangle
+                if abs(a) < 1e-8:
+                    continue
+
+                f = 1.0 / a
+                s = point - v0
+                u = f * np.dot(s, h)
+
+                if u < 0.0 or u > 1.0:
+                    continue
+
+                q = np.cross(s, edge1)
+                v = f * np.dot(ray_dir, q)
+
+                if v < 0.0 or u + v > 1.0:
+                    continue
+
+                # Intersection distance along ray
+                t = f * np.dot(edge2, q)
+
+                # Only count intersections in front of the point
+                if t > 1e-8:
+                    intersection_count += 1
+
+            # Odd number of intersections = inside
+            inside[idx] = (intersection_count % 2) == 1
+
+        return inside
+
+    elif algorithm == 'bounding_sphere':
+        # Sphere: check if point is within spherical bounds
+        all_vertices = blocker_mesh.vectors.reshape(-1, 3)
+
+        # Calculate center as mean of all vertices
+        center = np.mean(all_vertices, axis=0)
+
+        # Calculate radius as max distance from center
+        distances = np.linalg.norm(all_vertices - center, axis=1)
+        radius = np.max(distances)
+
+        # Check if each point is within sphere
+        point_distances = np.linalg.norm(points - center, axis=1)
+        inside = point_distances <= radius
+
+        return inside
+
+    elif algorithm == 'bounding_cylinder':
+        # For cylinders: check if point is within cylindrical bounds
+        # 1. Calculate cylinder center and dimensions from mesh
+        all_vertices = blocker_mesh.vectors.reshape(-1, 3)
+
+        # Get bounding box
+        min_z = np.min(all_vertices[:, 2])
+        max_z = np.max(all_vertices[:, 2])
+        center_x = np.mean(all_vertices[:, 0])
+        center_y = np.mean(all_vertices[:, 1])
+
+        # Estimate radius as max distance from center axis in XY plane
+        distances_xy = np.sqrt((all_vertices[:, 0] - center_x)**2 +
+                               (all_vertices[:, 1] - center_y)**2)
+        radius = np.max(distances_xy)
+
+        # Check each point
+        inside = np.zeros(len(points), dtype=bool)
+        for i, point in enumerate(points):
+            # Check Z bounds
+            if point[2] < min_z or point[2] > max_z:
+                continue
+
+            # Check radial distance from center axis
+            dist_from_axis = np.sqrt((point[0] - center_x)**2 +
+                                    (point[1] - center_y)**2)
+            if dist_from_axis <= radius:
+                inside[i] = True
+
+        return inside
+
+    elif algorithm == 'bounding_box':
+        # Simple bounding box check
+        all_vertices = blocker_mesh.vectors.reshape(-1, 3)
+        min_bounds = np.min(all_vertices, axis=0)
+        max_bounds = np.max(all_vertices, axis=0)
+
+        # Check if each point is within bounds
+        inside = np.all((points >= min_bounds) & (points <= max_bounds), axis=1)
+        return inside
+
+    else:
+        raise ValueError(f"Unknown algorithm: {algorithm}")
+
+
+def split_mesh_by_blocker(input_mesh, blocker_mesh, algorithm='boolean'):
+    """
+    Split a mesh into two parts using boolean operations:
+    - Outside: input_mesh MINUS blocker_mesh (difference)
+    - Inside: input_mesh INTERSECT blocker_mesh (intersection)
+
+    Args:
+        input_mesh: mesh.Mesh object to split
+        blocker_mesh: mesh.Mesh object representing the blocker volume
+        algorithm: 'boolean' for CSG operations (default), or legacy algorithms
+
+    Returns:
+        tuple of (outside_mesh, inside_mesh) - two mesh.Mesh objects
+        If one part has no triangles, returns an empty mesh for that part
+    """
+    import trimesh
+
+    print(f"Splitting mesh by blocker volume using boolean operations...")
+
+    try:
+        # Convert numpy-stl meshes to trimesh objects
+        # For numpy-stl meshes, vertices are stored as (n_triangles, 3, 3)
+        # We need to properly extract unique vertices and faces
+        def stl_to_trimesh(stl_mesh):
+            """Convert numpy-stl mesh to trimesh with proper vertex merging"""
+            # Get all vertices (reshape to list of 3D points)
+            all_verts = stl_mesh.vectors.reshape(-1, 3)
+
+            # Create trimesh (it will automatically merge duplicate vertices)
+            return trimesh.Trimesh(vertices=all_verts,
+                                  faces=np.arange(len(all_verts)).reshape(-1, 3),
+                                  process=True)  # Enable processing to fix manifoldness
+
+        input_trimesh = stl_to_trimesh(input_mesh)
+        blocker_trimesh = stl_to_trimesh(blocker_mesh)
+
+        # Check if meshes are watertight
+        print(f"  Input mesh: {len(input_trimesh.vertices)} verts, {len(input_trimesh.faces)} faces, watertight: {input_trimesh.is_watertight}")
+        print(f"  Blocker mesh: {len(blocker_trimesh.vertices)} verts, {len(blocker_trimesh.faces)} faces, watertight: {blocker_trimesh.is_watertight}")
+
+        if not input_trimesh.is_watertight or not blocker_trimesh.is_watertight:
+            raise ValueError("Meshes must be watertight for boolean operations")
+
+        # Perform boolean operations
+        # Try different engines in order of preference
+        engines_to_try = ['blender', 'scad', None]  # None = auto-select
+
+        outside_trimesh = None
+        inside_trimesh = None
+
+        for engine in engines_to_try:
+            try:
+                engine_name = engine if engine else 'auto'
+                print(f"  Trying boolean operations with engine: {engine_name}")
+
+                print(f"    Computing difference (outside = input - blocker)...")
+                outside_trimesh = input_trimesh.difference(blocker_trimesh, engine=engine)
+
+                print(f"    Computing intersection (inside = input ∩ blocker)...")
+                inside_trimesh = input_trimesh.intersection(blocker_trimesh, engine=engine)
+
+                print(f"  ✓ Boolean operations succeeded with engine: {engine_name}")
+                break
+
+            except Exception as engine_error:
+                print(f"    Engine {engine_name} failed: {engine_error}")
+                if engine == engines_to_try[-1]:
+                    # Last engine failed, re-raise
+                    raise
+                continue
+
+        # Convert back to numpy-stl format
+        def trimesh_to_stl_mesh(tm):
+            if tm is None or len(tm.faces) == 0:
+                return mesh.Mesh(np.zeros(0, dtype=mesh.Mesh.dtype))
+
+            stl_mesh = mesh.Mesh(np.zeros(len(tm.faces), dtype=mesh.Mesh.dtype))
+            for i, face in enumerate(tm.faces):
+                for j in range(3):
+                    stl_mesh.vectors[i][j] = tm.vertices[face[j]]
+            return stl_mesh
+
+        outside_mesh = trimesh_to_stl_mesh(outside_trimesh)
+        inside_mesh = trimesh_to_stl_mesh(inside_trimesh)
+
+        print(f"  Outside (difference): {len(outside_mesh.vectors)} triangles")
+        print(f"  Inside (intersection): {len(inside_mesh.vectors)} triangles")
+
+        return outside_mesh, inside_mesh
+
+    except Exception as e:
+        print(f"  Warning: Boolean operation failed: {e}")
+        print(f"  Falling back to centroid-based splitting...")
+
+        # Fallback to simple centroid-based splitting
+        outside_triangles = []
+        inside_triangles = []
+
+        for tri in input_mesh.vectors:
+            centroid = np.mean(tri, axis=0).reshape(1, 3)
+            is_inside = point_inside_mesh_volume(centroid, blocker_mesh, algorithm='bounding_box')[0]
+
+            if is_inside:
+                inside_triangles.append(tri)
+            else:
+                outside_triangles.append(tri)
+
+        # Create meshes
+        if outside_triangles:
+            outside_mesh = mesh.Mesh(np.zeros(len(outside_triangles), dtype=mesh.Mesh.dtype))
+            for i, tri in enumerate(outside_triangles):
+                outside_mesh.vectors[i] = tri
+        else:
+            outside_mesh = mesh.Mesh(np.zeros(0, dtype=mesh.Mesh.dtype))
+
+        if inside_triangles:
+            inside_mesh = mesh.Mesh(np.zeros(len(inside_triangles), dtype=mesh.Mesh.dtype))
+            for i, tri in enumerate(inside_triangles):
+                inside_mesh.vectors[i] = tri
+        else:
+            inside_mesh = mesh.Mesh(np.zeros(0, dtype=mesh.Mesh.dtype))
+
+        print(f"  Outside: {len(outside_mesh.vectors)} triangles")
+        print(f"  Inside: {len(inside_mesh.vectors)} triangles")
+
+        return outside_mesh, inside_mesh
+
+
+def repair_mesh(input_mesh):
+    """
+    Repair a mesh to fix non-manifold edges and other issues.
+    Uses trimesh to merge duplicate vertices and fix mesh topology.
+
+    Args:
+        input_mesh: numpy-stl mesh object
+
+    Returns:
+        Repaired numpy-stl mesh object with metadata preserved
+    """
+    import trimesh
+    import tempfile
+    import os
+
+    # Store metadata if it exists
+    metadata = getattr(input_mesh, 'metadata', None)
+
+    # Convert to trimesh
+    all_verts = input_mesh.vectors.reshape(-1, 3)
+    tri_mesh = trimesh.Trimesh(
+        vertices=all_verts,
+        faces=np.arange(len(all_verts)).reshape(-1, 3),
+        process=True  # This will merge duplicate vertices and fix topology
+    )
+
+    # Additional repair steps
+    # Merge duplicate vertices (already done by process=True, but ensure it's done)
+    tri_mesh.merge_vertices()
+
+    # Fix normal consistency
+    tri_mesh.fix_normals()
+
+    # Try to fill holes (may fail on some meshes)
+    try:
+        tri_mesh.fill_holes()
+    except Exception as e:
+        print(f"  Note: Could not fill holes: {e}")
+
+    # Use trimesh's STL export/import cycle to further clean up the mesh
+    # This often fixes remaining non-manifold edges
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.stl', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+
+        # Export to STL
+        tri_mesh.export(tmp_path)
+
+        # Re-import with processing
+        tri_mesh = trimesh.load(tmp_path, process=True)
+
+        # Clean up temp file
+        os.unlink(tmp_path)
+    except Exception as e:
+        print(f"  Note: Could not perform export/import cycle: {e}")
+
+    # Convert back to numpy-stl
+    repaired = mesh.Mesh(np.zeros(len(tri_mesh.faces), dtype=mesh.Mesh.dtype))
+    for i, face in enumerate(tri_mesh.faces):
+        for j in range(3):
+            repaired.vectors[i][j] = tri_mesh.vertices[face[j]]
+
+    # Restore metadata
+    if metadata is not None:
+        repaired.metadata = metadata
+
+    print(f"  Mesh repaired: {len(input_mesh.vectors)} → {len(repaired.vectors)} triangles")
+
+    return repaired
+
+
 def estimate_output_size(input_mesh, point_distance=0.8, skip_small_triangles=False):
     """
     Estimate the output STL file size and triangle count before processing.
@@ -646,7 +1049,8 @@ def subdivide_triangle(v0, v1, v2, max_edge_length):
 
 def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                      noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
-                     noise_persistence=0.5, skip_bottom=False, skip_small_triangles=False):
+                     noise_persistence=0.5, skip_bottom=False, skip_small_triangles=False,
+                     blocker_mesh=None, blocker_algorithm='ray_casting'):
     """
     Apply fuzzy skin texture to mesh by subdividing and displacing vertices.
 
@@ -661,8 +1065,76 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
         noise_persistence: Amplitude persistence for Perlin/Billow noise
         skip_bottom: If True, skip fuzzy skin on bottom layer (z ≈ min_z)
         skip_small_triangles: If True, skip subdivision for triangles with at least one edge < point_distance
+        blocker_mesh: mesh.Mesh object representing a blocker volume (optional). Vertices inside this
+                      volume will not have fuzzy skin applied.
+        blocker_algorithm: Algorithm for point-in-volume testing:
+                          'ray_casting' - Accurate but slow
+                          'bounding_box' - Fast, conservative
+                          'bounding_sphere' - Fast, conservative
+                          'bounding_cylinder' - Fast for cylinder-shaped blockers
+                          'double_stl' - Split mesh into inside/outside, apply fuzzy only to outside
     """
     np.random.seed(seed)
+
+    # Handle double_stl algorithm: split mesh and process separately
+    if blocker_mesh is not None and blocker_algorithm == 'double_stl':
+        print("Using double STL algorithm: splitting mesh into inside/outside blocker volume...")
+
+        # Split the mesh into outside and inside parts using boolean operations
+        outside_mesh, inside_mesh = split_mesh_by_blocker(input_mesh, blocker_mesh, algorithm='boolean')
+
+        if len(outside_mesh.vectors) == 0:
+            # Everything is inside blocker - return unprocessed mesh
+            print("All triangles are inside blocker volume - returning unprocessed mesh")
+            return input_mesh
+        elif len(inside_mesh.vectors) == 0:
+            # Nothing is inside blocker - process entire mesh normally
+            print("No triangles inside blocker volume - processing entire mesh")
+            # Continue with normal processing (fall through)
+        else:
+            # Process only the outside part
+            print(f"Processing outside part ({len(outside_mesh.vectors)} triangles)...")
+            processed_outside = apply_fuzzy_skin(
+                outside_mesh,
+                thickness=thickness,
+                point_distance=point_distance,
+                seed=seed,
+                noise_type=noise_type,
+                noise_scale=noise_scale,
+                noise_octaves=noise_octaves,
+                noise_persistence=noise_persistence,
+                skip_bottom=skip_bottom,
+                skip_small_triangles=skip_small_triangles,
+                blocker_mesh=None,  # No blocker for recursive call
+                blocker_algorithm='ray_casting'  # Not used since blocker_mesh is None
+            )
+
+            # Combine processed outside with unprocessed inside
+            print(f"Combining processed outside with unprocessed inside...")
+            total_triangles = len(processed_outside.vectors) + len(inside_mesh.vectors)
+            combined_mesh = mesh.Mesh(np.zeros(total_triangles, dtype=mesh.Mesh.dtype))
+
+            # Add processed outside triangles
+            combined_mesh.vectors[:len(processed_outside.vectors)] = processed_outside.vectors
+
+            # Add unprocessed inside triangles
+            combined_mesh.vectors[len(processed_outside.vectors):] = inside_mesh.vectors
+
+            # Store metadata about the split for visualization
+            # This will be used by the frontend to color the two parts differently
+            combined_mesh.metadata = {
+                'split_index': len(processed_outside.vectors),
+                'outside_count': len(processed_outside.vectors),
+                'inside_count': len(inside_mesh.vectors)
+            }
+
+            print(f"Combined mesh: {total_triangles} triangles ({len(processed_outside.vectors)} processed + {len(inside_mesh.vectors)} unprocessed)")
+
+            # Repair mesh to fix non-manifold edges from boolean operations
+            print("Repairing mesh to ensure manifold output...")
+            combined_mesh = repair_mesh(combined_mesh)
+
+            return combined_mesh
 
     # Create noise generator
     noise_gen = NoiseGenerator(
@@ -801,12 +1273,35 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     displaced_vertices = unique_vertices.copy()
 
     # Determine which vertices to process
+    # Start with all vertices enabled
+    process_mask = np.ones(len(unique_vertices), dtype=bool)
+
+    # Apply skip_bottom if enabled
     if skip_bottom:
-        process_mask = unique_vertices[:, 2] > bottom_threshold
-        skipped_count = np.sum(~process_mask)
-    else:
-        process_mask = np.ones(len(unique_vertices), dtype=bool)
-        skipped_count = 0
+        bottom_mask = unique_vertices[:, 2] > bottom_threshold
+        process_mask &= bottom_mask
+        bottom_skipped = np.sum(~bottom_mask)
+        if bottom_skipped > 0:
+            print(f"Skipping {bottom_skipped} bottom layer vertices")
+
+    # Apply blocker if provided
+    if blocker_mesh is not None:
+        # If double_stl was requested but we got here, it means we're processing the split mesh
+        # In that case, we don't need to check vertices again
+        if blocker_algorithm == 'double_stl':
+            # This shouldn't happen - double_stl should have been handled earlier
+            # But if it does, just skip blocker checking since mesh is already split
+            print("Warning: double_stl algorithm reached vertex processing (mesh should already be split)")
+        else:
+            print(f"Checking vertices against blocker volume (algorithm: {blocker_algorithm})...")
+            blocker_mask = point_inside_mesh_volume(unique_vertices, blocker_mesh, algorithm=blocker_algorithm)
+            process_mask &= ~blocker_mask  # Don't process vertices inside blocker
+            blocker_skipped = np.sum(blocker_mask)
+            if blocker_skipped > 0:
+                print(f"Blocked {blocker_skipped} vertices inside blocker volume")
+
+    # Calculate total skipped count
+    skipped_count = np.sum(~process_mask)
 
     # Get noise values for all vertices to process
     noise_values = np.zeros(len(unique_vertices))
@@ -818,12 +1313,9 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     displacement_amounts = (noise_values + 1) * 0.5 * thickness
     displaced_vertices += vertex_normals * displacement_amounts[:, np.newaxis]
 
-    # Zero out displacement for skipped vertices
-    if skip_bottom:
+    # Zero out displacement for skipped vertices (bottom layer and/or blocker)
+    if skipped_count > 0:
         displaced_vertices[~process_mask] = unique_vertices[~process_mask]
-
-    if skip_bottom and skipped_count > 0:
-        print(f"Skipped {skipped_count} bottom layer vertices")
 
     # Update mesh with displaced vertices (vectorized)
     print("Updating mesh with displaced vertices...")

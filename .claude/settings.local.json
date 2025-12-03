@@ -11,7 +11,12 @@
       "Bash(git stash:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "Bash(pkill:*)",
+      "Bash(kill:*)",
+      "Bash(pip3 list:*)",
+      "Bash(git merge:*)"
     ],
     "deny": [],
     "ask": []
