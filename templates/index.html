@@ -497,6 +497,12 @@
                             Show blocker in viewer
                         </label>
                     </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showIntersection" checked>
+                            Show intersection (yellow) mesh
+                        </label>
+                    </div>
                 </div>
 
                 <div id="blockerSection" style="display:none">
@@ -691,6 +697,7 @@
         // Three.js setup
         let scene, camera, renderer, controls, currentMesh, blockerMesh;
         let uploadedBlockerFile = null;
+        let currentSplitMetadata = null;  // Track split metadata for intersection hiding
         const viewerContainer = document.getElementById('viewer');
 
         function initViewer() {
@@ -792,6 +799,9 @@
 
                 currentMesh = new THREE.Mesh(geometry, material);
 
+                // Store split metadata for intersection hiding
+                currentSplitMetadata = splitMetadata;
+
                 console.log(`Dual-color rendering: ${splitMetadata.outsideCount} green triangles (outside), ${splitMetadata.insideCount} yellow triangles (inside)`);
             } else {
                 // Single color rendering (default green)
@@ -802,6 +812,9 @@
                 });
 
                 currentMesh = new THREE.Mesh(geometry, material);
+
+                // Clear split metadata for non-split meshes
+                currentSplitMetadata = null;
             }
 
             // Center horizontally and place on grid (bottom at y=0)
@@ -851,6 +864,59 @@
             blockerMesh.position.set(-center.x, -minY, -center.z);
 
             scene.add(blockerMesh);
+        }
+
+        function toggleIntersectionVisibility(show) {
+            if (!currentMesh || !currentSplitMetadata) {
+                return;  // No split mesh loaded
+            }
+
+            const geometry = currentMesh.geometry;
+            const colorAttribute = geometry.getAttribute('color');
+
+            if (!colorAttribute) {
+                return;  // No vertex colors
+            }
+
+            const colors = colorAttribute.array;
+            const splitIndex = currentSplitMetadata.splitIndex;
+            const greenColor = new THREE.Color(0x4ade80);
+            const yellowColor = new THREE.Color(0xffd700);
+            const transparentColor = new THREE.Color(0x000000);  // Will be made invisible
+
+            // Update colors for yellow (inside) triangles
+            for (let i = 0; i < geometry.attributes.position.count / 3; i++) {
+                const triangleIndex = i;
+
+                if (triangleIndex >= splitIndex) {
+                    // This is a yellow (inside) triangle
+                    const color = show ? yellowColor : greenColor;  // When hiding, make them green to blend
+
+                    for (let j = 0; j < 3; j++) {
+                        const vertexIndex = i * 3 + j;
+                        if (show) {
+                            colors[vertexIndex * 3] = yellowColor.r;
+                            colors[vertexIndex * 3 + 1] = yellowColor.g;
+                            colors[vertexIndex * 3 + 2] = yellowColor.b;
+                        } else {
+                            // Make transparent by setting alpha in material
+                            colors[vertexIndex * 3] = 0;
+                            colors[vertexIndex * 3 + 1] = 0;
+                            colors[vertexIndex * 3 + 2] = 0;
+                        }
+                    }
+                }
+            }
+
+            colorAttribute.needsUpdate = true;
+
+            // Enable/disable transparency in material
+            currentMesh.material.transparent = !show;
+            if (!show) {
+                currentMesh.material.opacity = 0.99;  // Slight transparency to hide black triangles
+            } else {
+                currentMesh.material.opacity = 1.0;
+            }
         }
 
         function generateDefaultCylinderPreview() {
@@ -1121,6 +1187,11 @@
             if (blockerMesh) {
                 blockerMesh.visible = e.target.checked;
             }
+        });
+
+        const showIntersection = document.getElementById('showIntersection');
+        showIntersection.addEventListener('change', (e) => {
+            toggleIntersectionVisibility(e.target.checked);
         });
 
         useDefaultCylinder.addEventListener('change', (e) => {

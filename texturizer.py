@@ -696,6 +696,77 @@ def split_mesh_by_blocker(input_mesh, blocker_mesh, algorithm='boolean'):
         return outside_mesh, inside_mesh
 
 
+def repair_mesh(input_mesh):
+    """
+    Repair a mesh to fix non-manifold edges and other issues.
+    Uses trimesh to merge duplicate vertices and fix mesh topology.
+
+    Args:
+        input_mesh: numpy-stl mesh object
+
+    Returns:
+        Repaired numpy-stl mesh object with metadata preserved
+    """
+    import trimesh
+    import tempfile
+    import os
+
+    # Store metadata if it exists
+    metadata = getattr(input_mesh, 'metadata', None)
+
+    # Convert to trimesh
+    all_verts = input_mesh.vectors.reshape(-1, 3)
+    tri_mesh = trimesh.Trimesh(
+        vertices=all_verts,
+        faces=np.arange(len(all_verts)).reshape(-1, 3),
+        process=True  # This will merge duplicate vertices and fix topology
+    )
+
+    # Additional repair steps
+    # Merge duplicate vertices (already done by process=True, but ensure it's done)
+    tri_mesh.merge_vertices()
+
+    # Fix normal consistency
+    tri_mesh.fix_normals()
+
+    # Try to fill holes (may fail on some meshes)
+    try:
+        tri_mesh.fill_holes()
+    except Exception as e:
+        print(f"  Note: Could not fill holes: {e}")
+
+    # Use trimesh's STL export/import cycle to further clean up the mesh
+    # This often fixes remaining non-manifold edges
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.stl', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+
+        # Export to STL
+        tri_mesh.export(tmp_path)
+
+        # Re-import with processing
+        tri_mesh = trimesh.load(tmp_path, process=True)
+
+        # Clean up temp file
+        os.unlink(tmp_path)
+    except Exception as e:
+        print(f"  Note: Could not perform export/import cycle: {e}")
+
+    # Convert back to numpy-stl
+    repaired = mesh.Mesh(np.zeros(len(tri_mesh.faces), dtype=mesh.Mesh.dtype))
+    for i, face in enumerate(tri_mesh.faces):
+        for j in range(3):
+            repaired.vectors[i][j] = tri_mesh.vertices[face[j]]
+
+    # Restore metadata
+    if metadata is not None:
+        repaired.metadata = metadata
+
+    print(f"  Mesh repaired: {len(input_mesh.vectors)} → {len(repaired.vectors)} triangles")
+
+    return repaired
+
+
 def estimate_output_size(input_mesh, point_distance=0.8, skip_small_triangles=False):
     """
     Estimate the output STL file size and triangle count before processing.
@@ -1018,6 +1089,11 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
             }
 
             print(f"Combined mesh: {total_triangles} triangles ({len(processed_outside.vectors)} processed + {len(inside_mesh.vectors)} unprocessed)")
+
+            # Repair mesh to fix non-manifold edges from boolean operations
+            print("Repairing mesh to ensure manifold output...")
+            combined_mesh = repair_mesh(combined_mesh)
+
             return combined_mesh
 
     # Create noise generator

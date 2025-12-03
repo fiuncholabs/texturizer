@@ -3,6 +3,8 @@ flask>=2.0.0
 numpy
 numpy-stl
 noise
+scipy
+trimesh
 
 # Production server
 gunicorn>=20.1.0
