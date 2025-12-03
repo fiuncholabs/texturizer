@@ -585,6 +585,133 @@ GOOGLE_DISCOVERY_URL=https://accounts.google.com/.well-known/openid-configuratio
 - Session-based auth requires no database changes
 - Application maintains backward compatibility when auth disabled
 
+### Session: 2025-12-03 (Blocker Volume Feature - Major Update)
+**Work Completed**:
+1. Removed blocker algorithm selection (now only uses "double_stl" method)
+2. Added blocker shape selection: cylinder, cube, or custom STL
+3. Implemented blocker position and rotation controls for all shapes
+4. Added scaling factor for custom blocker STL files
+5. Fixed multiple UI control bugs for blocker shapes
+6. Cleaned up deployment documentation (removed Docker references)
+
+**Commits**:
+- `a702a51` - Remove blocker algorithm selection, use only double_stl
+- `23f1aef` - Add blocker shape selection: cylinder, cube, or custom STL
+- `192553b` - Fix cube blocker position and rotation controls
+- `791bee9` - Fix slider controls for cube blocker position/rotation
+- `90f8deb` - Add scaling factor for custom blocker STL
+- `6830450` - Add position and rotation controls for custom blocker STL
+- `8b49852` - Remove Docker deployment references, use Python buildpack only
+
+**Files Modified**:
+
+1. **templates/index.html** - Major UI overhaul for blocker controls:
+   - Lines 573-624: New blocker type selector (cylinder/cube/custom)
+   - Lines 619-623: Scale factor input for custom blockers
+   - Lines 970-1024: Updated loadBlockerSTL() with position/rotation/scale transforms
+   - Lines 1496-1514: Fixed position/rotation event listeners for all blocker types
+   - Lines 1522: Updated overlay visibility to include custom blockers
+
+2. **texturizer.py** - New blocker generation functions:
+   - Lines 480-535: `generate_blocker_cube()` function with rotation logic
+   - Z-up to Y-up coordinate system conversion using trimesh transformations
+   - Euler angle rotation with left-to-right matrix multiplication
+
+3. **app.py** - Backend handling for blocker shapes:
+   - Lines 320-337: Parse blocker_type (cylinder/cube/custom) and parameters
+   - Lines 334: Parse blocker_scale parameter
+   - Lines 476-543: Custom blocker transform handling (scale, rotation, position)
+   - Hardcoded blocker_algorithm = 'double_stl' (line 325)
+
+4. **DEPLOYMENT.md** - Removed Docker deployment:
+   - Removed Docker (Self-Hosted) section from TOC
+   - Updated Fly.io config to use Python buildpacks instead of Dockerfile
+   - Removed Docker logging instructions
+   - Total removal: ~107 lines of Docker documentation
+
+5. **README.md** - Deployment simplification:
+   - Removed Docker/VPS deployment option
+   - Removed "Deploy with Docker" code examples
+   - Updated project structure to show runtime.txt instead of Dockerfile
+   - Simplified quick deploy instructions to focus on Python buildpack
+
+**Key Features Added**:
+
+**Blocker Shape Selection**:
+- **Cylinder**: Configurable radius and height with position/rotation
+- **Cube**: Configurable width, height, depth with position/rotation
+- **Custom STL**: User-uploaded blocker with scale, position, and rotation
+
+**Transform Controls** (All blocker types):
+- Position: X, Y, Z offset from mesh center (-50 to +50mm)
+- Rotation: X, Y, Z rotation angles (0-360 degrees)
+- Scale: 0.1x to 10x for custom STL blockers
+
+**Coordinate System Handling**:
+- STL files use Z-up convention
+- Three.js uses Y-up convention
+- Proper transformation pipeline: Z-up → Y-up → rotate → Y-up → Z-up
+
+**Technical Implementation Details**:
+
+**Rotation Logic** (consistent across all blocker shapes):
+```python
+# Convert Z-up (STL) to Y-up (rendering)
+to_yup = trimesh.transformations.rotation_matrix(np.radians(-90), [1, 0, 0])
+
+# Apply user rotations in Y-up space
+user_transform = np.eye(4)
+if rx != 0:
+    user_transform = user_transform @ rotation_matrix(np.radians(rx), [1, 0, 0])
+if rz != 0:
+    user_transform = user_transform @ rotation_matrix(np.radians(rz), [0, 1, 0])
+if ry != 0:
+    user_transform = user_transform @ rotation_matrix(np.radians(-ry), [0, 0, 1])
+
+# Convert Y-up back to Z-up (STL)
+from_yup = trimesh.transformations.rotation_matrix(np.radians(90), [1, 0, 0])
+
+# Final transformation
+transform = from_yup @ user_transform @ to_yup
+```
+
+**Bug Fixes**:
+1. **Cube position/rotation controls not working** (192553b):
+   - Problem: Event listeners checked for removed `useDefaultCylinder.checked`
+   - Fix: Updated to check `blockerType.value` instead
+
+2. **Slider controls for cube not working** (791bee9):
+   - Problem: Slider event listeners also checked old checkbox
+   - Fix: Updated slider handlers to check blockerType.value
+
+**Deployment Cleanup**:
+- Removed all Docker deployment documentation
+- Updated platforms to use Python buildpacks
+- Ensures DigitalOcean correctly detects Python app via Procfile
+- Prevents Docker deployment confusion
+
+**Testing Files**:
+- `test_blocker.py` - Unit tests for blocker volume functionality
+- `test_double_stl.py` - Tests for double_stl algorithm
+- `test_trimesh_boolean.py` - Debug script for CSG boolean operations
+- `test_integration.py` - Full workflow integration tests
+- `tests/test_production.py` - Production deployment test suite
+
+**Notes**:
+- Blocker algorithm selection removed - only "double_stl" method remains
+- Three blocker shape options provide flexibility for different use cases
+- Transform controls work consistently across all blocker types
+- Custom blocker STL allows advanced users to use any shape
+- Deployment now clearly Python-only (no Docker confusion)
+- CSG boolean operations use trimesh library
+- Non-manifold edge warnings expected with complex boolean ops (documented in README)
+
+**Future Considerations**:
+- Advanced mesh repair for non-manifold edges from CSG operations
+- Preview of blocker + mesh before processing (currently only shows separately)
+- Blocker presets (common shapes/sizes)
+- Blocker library (save/load custom blockers)
+
 ---
 
 ## Instructions for Future AI Sessions
