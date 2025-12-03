@@ -1514,8 +1514,13 @@
                 display.textContent = value + mapping.unit;
 
                 // Trigger preview update
-                if (useBlocker.checked && useDefaultCylinder.checked) {
-                    generateDefaultCylinderPreview();
+                if (useBlocker.checked) {
+                    const type = blockerType.value;
+                    if (type === 'cylinder') {
+                        generateDefaultCylinderPreview();
+                    } else if (type === 'cube') {
+                        generateDefaultCubePreview();
+                    }
                 }
             });
 
