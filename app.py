@@ -330,6 +330,9 @@ def process_stl():
         cube_height = float(request.form.get('cube_height', 10))
         cube_depth = float(request.form.get('cube_depth', 10))
 
+        # Custom blocker scale
+        blocker_scale = float(request.form.get('blocker_scale', 1.0))
+
         # Always use double_stl algorithm
         blocker_algorithm = 'double_stl'
 
@@ -473,7 +476,13 @@ def process_stl():
                 # Load blocker mesh
                 try:
                     blocker_mesh = mesh.Mesh.from_file(tmp_blocker_path)
-                    app.logger.info(f"Blocker mesh has {len(blocker_mesh.vectors)} triangles")
+                    app.logger.info(f"Blocker mesh loaded with {len(blocker_mesh.vectors)} triangles")
+
+                    # Apply scale if not 1.0
+                    if blocker_scale != 1.0:
+                        app.logger.info(f"Applying scale factor of {blocker_scale} to custom blocker")
+                        blocker_mesh.vectors *= blocker_scale
+                        app.logger.info(f"Blocker scaled successfully")
                 except Exception as e:
                     app.logger.error(f"Failed to load blocker STL: {str(e)}")
                     return jsonify({'error': f'Invalid blocker STL file: {str(e)}'}), 400
