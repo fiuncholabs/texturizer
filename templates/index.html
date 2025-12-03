@@ -571,22 +571,15 @@
 
                 <div id="blockerSection" style="display:none">
                     <div class="form-group">
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="useDefaultCylinder" checked>
-                            Use default cylinder
-                        </label>
+                        <label for="blockerType">Blocker Shape</label>
+                        <select id="blockerType">
+                            <option value="cylinder" selected>Cylinder</option>
+                            <option value="cube">Cube</option>
+                            <option value="custom">Custom STL</option>
+                        </select>
                     </div>
 
-                    <div id="blockerUploadSection" style="display:none">
-                        <div class="form-group">
-                            <div class="file-input-wrapper">
-                                <div class="file-input-btn">Choose Blocker STL</div>
-                                <input type="file" id="blockerFile" accept=".stl">
-                            </div>
-                            <div id="blockerFileName" class="file-name">No blocker file selected</div>
-                        </div>
-                    </div>
-
+                    <!-- Cylinder options -->
                     <div id="cylinderOptions">
                         <div class="form-group">
                             <label for="cylinderRadius">Cylinder Radius (mm)</label>
@@ -595,6 +588,33 @@
                         <div class="form-group">
                             <label for="cylinderHeight">Cylinder Height (mm)</label>
                             <input type="number" id="cylinderHeight" value="25" min="1" max="200" step="1">
+                        </div>
+                    </div>
+
+                    <!-- Cube options -->
+                    <div id="cubeOptions" style="display:none">
+                        <div class="form-group">
+                            <label for="cubeWidth">Cube Width (mm)</label>
+                            <input type="number" id="cubeWidth" value="10" min="1" max="200" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="cubeHeight">Cube Height (mm)</label>
+                            <input type="number" id="cubeHeight" value="10" min="1" max="200" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="cubeDepth">Cube Depth (mm)</label>
+                            <input type="number" id="cubeDepth" value="10" min="1" max="200" step="1">
+                        </div>
+                    </div>
+
+                    <!-- Custom STL upload -->
+                    <div id="blockerUploadSection" style="display:none">
+                        <div class="form-group">
+                            <div class="file-input-wrapper">
+                                <div class="file-input-btn">Choose Blocker STL</div>
+                                <input type="file" id="blockerFile" accept=".stl">
+                            </div>
+                            <div id="blockerFileName" class="file-name">No blocker file selected</div>
                         </div>
                     </div>
 
@@ -1088,6 +1108,61 @@
             scene.add(blockerMesh);
         }
 
+        function generateDefaultCubePreview() {
+            const width = parseFloat(document.getElementById('cubeWidth').value);
+            const height = parseFloat(document.getElementById('cubeHeight').value);
+            const depth = parseFloat(document.getElementById('cubeDepth').value);
+
+            // Get position and rotation offsets
+            const posX = parseFloat(document.getElementById('blockerPosX').value);
+            const posY = parseFloat(document.getElementById('blockerPosY').value);
+            const posZ = parseFloat(document.getElementById('blockerPosZ').value);
+            const rotX = parseFloat(document.getElementById('blockerRotX').value) * Math.PI / 180;
+            const rotY = parseFloat(document.getElementById('blockerRotY').value) * Math.PI / 180;
+            const rotZ = parseFloat(document.getElementById('blockerRotZ').value) * Math.PI / 180;
+
+            // Remove existing blocker
+            if (blockerMesh) {
+                scene.remove(blockerMesh);
+            }
+
+            // Create box geometry in Three.js
+            const geometry = new THREE.BoxGeometry(width, height, depth);
+
+            // Semi-transparent red material
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xff4757,
+                transparent: true,
+                opacity: 0.5,
+                side: THREE.DoubleSide
+            });
+
+            blockerMesh = new THREE.Mesh(geometry, material);
+
+            // Position blocker at the center of the visible mesh
+            if (currentMesh && currentMesh.geometry.boundingBox) {
+                const bbox = currentMesh.geometry.boundingBox;
+                const meshCenter = new THREE.Vector3();
+                bbox.getCenter(meshCenter);
+
+                const worldCenter = meshCenter.clone().add(currentMesh.position);
+
+                // Apply position offset (STL coordinates are Z-up, Three.js is Y-up)
+                blockerMesh.position.set(
+                    worldCenter.x + posX,
+                    worldCenter.y + posZ,
+                    worldCenter.z - posY
+                );
+            } else {
+                blockerMesh.position.set(posX, posZ, -posY);
+            }
+
+            // Apply rotation
+            blockerMesh.rotation.set(rotX, rotZ, -rotY);
+
+            scene.add(blockerMesh);
+        }
+
         function removeBlocker() {
             if (blockerMesh) {
                 scene.remove(blockerMesh);
@@ -1291,19 +1366,23 @@
         const blockerSection = document.getElementById('blockerSection');
         const blockerVisibilitySection = document.getElementById('blockerVisibilitySection');
         const showBlocker = document.getElementById('showBlocker');
-        const useDefaultCylinder = document.getElementById('useDefaultCylinder');
+        const blockerType = document.getElementById('blockerType');
         const blockerUploadSection = document.getElementById('blockerUploadSection');
         const cylinderOptions = document.getElementById('cylinderOptions');
+        const cubeOptions = document.getElementById('cubeOptions');
         const blockerFileInput = document.getElementById('blockerFile');
         const cylinderRadius = document.getElementById('cylinderRadius');
         const cylinderHeight = document.getElementById('cylinderHeight');
+        const cubeWidth = document.getElementById('cubeWidth');
+        const cubeHeight = document.getElementById('cubeHeight');
+        const cubeDepth = document.getElementById('cubeDepth');
 
         useBlocker.addEventListener('change', (e) => {
             blockerSection.style.display = e.target.checked ? 'block' : 'none';
             blockerVisibilitySection.style.display = e.target.checked ? 'block' : 'none';
-            if (e.target.checked && useDefaultCylinder.checked) {
-                generateDefaultCylinderPreview();
-            } else if (!e.target.checked) {
+            if (e.target.checked) {
+                updateBlockerPreview();
+            } else {
                 removeBlocker();
             }
         });
@@ -1319,27 +1398,61 @@
             toggleIntersectionVisibility(e.target.checked);
         });
 
-        useDefaultCylinder.addEventListener('change', (e) => {
-            blockerUploadSection.style.display = e.target.checked ? 'none' : 'block';
-            cylinderOptions.style.display = e.target.checked ? 'block' : 'none';
+        // Handle blocker type changes
+        blockerType.addEventListener('change', () => {
+            updateBlockerTypeVisibility();
+            updateBlockerPreview();
+        });
 
-            if (e.target.checked) {
+        function updateBlockerTypeVisibility() {
+            const type = blockerType.value;
+            cylinderOptions.style.display = type === 'cylinder' ? 'block' : 'none';
+            cubeOptions.style.display = type === 'cube' ? 'block' : 'none';
+            blockerUploadSection.style.display = type === 'custom' ? 'block' : 'none';
+        }
+
+        function updateBlockerPreview() {
+            if (!useBlocker.checked) return;
+
+            const type = blockerType.value;
+            if (type === 'cylinder') {
                 generateDefaultCylinderPreview();
+            } else if (type === 'cube') {
+                generateDefaultCubePreview();
             } else {
+                // Custom - wait for file upload
                 removeBlocker();
                 uploadedBlockerFile = null;
             }
-        });
+        }
 
         cylinderRadius.addEventListener('input', () => {
-            if (useBlocker.checked && useDefaultCylinder.checked) {
+            if (useBlocker.checked && blockerType.value === 'cylinder') {
                 generateDefaultCylinderPreview();
             }
         });
 
         cylinderHeight.addEventListener('input', () => {
-            if (useBlocker.checked && useDefaultCylinder.checked) {
+            if (useBlocker.checked && blockerType.value === 'cylinder') {
                 generateDefaultCylinderPreview();
+            }
+        });
+
+        cubeWidth.addEventListener('input', () => {
+            if (useBlocker.checked && blockerType.value === 'cube') {
+                generateDefaultCubePreview();
+            }
+        });
+
+        cubeHeight.addEventListener('input', () => {
+            if (useBlocker.checked && blockerType.value === 'cube') {
+                generateDefaultCubePreview();
+            }
+        });
+
+        cubeDepth.addEventListener('input', () => {
+            if (useBlocker.checked && blockerType.value === 'cube') {
+                generateDefaultCubePreview();
             }
         });
 
@@ -1362,16 +1475,17 @@
 
         // Function to update overlay visibility
         function updateBlockerControlsVisibility() {
-            if (useBlocker.checked && useDefaultCylinder.checked) {
+            const type = blockerType.value;
+            if (useBlocker.checked && (type === 'cylinder' || type === 'cube')) {
                 blockerControlsOverlay.classList.add('visible');
             } else {
                 blockerControlsOverlay.classList.remove('visible');
             }
         }
 
-        // Update visibility when blocker or cylinder options change
+        // Update visibility when blocker or type options change
         useBlocker.addEventListener('change', updateBlockerControlsVisibility);
-        useDefaultCylinder.addEventListener('change', updateBlockerControlsVisibility);
+        blockerType.addEventListener('change', updateBlockerControlsVisibility);
 
         // Sync sliders with sidebar inputs
         const sliderMappings = [
@@ -1598,11 +1712,17 @@
                 formData.append('blocker_rot_y', document.getElementById('blockerRotY').value);
                 formData.append('blocker_rot_z', document.getElementById('blockerRotZ').value);
 
-                if (useDefaultCylinder.checked) {
-                    formData.append('use_default_cylinder', 'true');
+                const type = blockerType.value;
+                formData.append('blocker_type', type);
+
+                if (type === 'cylinder') {
                     formData.append('cylinder_radius', cylinderRadius.value);
                     formData.append('cylinder_height', cylinderHeight.value);
-                } else if (uploadedBlockerFile) {
+                } else if (type === 'cube') {
+                    formData.append('cube_width', cubeWidth.value);
+                    formData.append('cube_height', cubeHeight.value);
+                    formData.append('cube_depth', cubeDepth.value);
+                } else if (type === 'custom' && uploadedBlockerFile) {
                     formData.append('blocker_file', uploadedBlockerFile);
                 }
             }

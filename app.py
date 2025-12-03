@@ -24,6 +24,7 @@ from texturizer import (
     apply_fuzzy_skin,
     generate_test_cube,
     generate_blocker_cylinder,
+    generate_blocker_cube,
     estimate_output_size,
     check_processing_feasibility,
     NOISE_TYPES,
@@ -318,9 +319,17 @@ def process_stl():
 
         # Blocker parameters
         use_blocker = request.form.get('use_blocker', 'false').lower() == 'true'
-        use_default_cylinder = request.form.get('use_default_cylinder', 'false').lower() == 'true'
+        blocker_type = request.form.get('blocker_type', 'cylinder')  # cylinder, cube, or custom
+
+        # Cylinder parameters
         cylinder_radius = float(request.form.get('cylinder_radius', 10))
         cylinder_height = float(request.form.get('cylinder_height', 30))
+
+        # Cube parameters
+        cube_width = float(request.form.get('cube_width', 10))
+        cube_height = float(request.form.get('cube_height', 10))
+        cube_depth = float(request.form.get('cube_depth', 10))
+
         # Always use double_stl algorithm
         blocker_algorithm = 'double_stl'
 
@@ -396,21 +405,20 @@ def process_stl():
         # Handle blocker mesh
         blocker_mesh = None
         if use_blocker:
-            if use_default_cylinder:
-                # Calculate the center of the input mesh for blocker positioning
-                min_coords = input_mesh.vectors.min(axis=(0, 1))
-                max_coords = input_mesh.vectors.max(axis=(0, 1))
-                center = (min_coords + max_coords) / 2
+            # Calculate the center of the input mesh for blocker positioning
+            min_coords = input_mesh.vectors.min(axis=(0, 1))
+            max_coords = input_mesh.vectors.max(axis=(0, 1))
+            center = (min_coords + max_coords) / 2
 
-                # Generate default cylinder blocker with position and rotation
-                # Apply user-specified offset to the center position
-                final_position = (
-                    center[0] + blocker_pos_x,
-                    center[1] + blocker_pos_y,
-                    center[2] + blocker_pos_z
-                )
+            # Calculate final position with user offset
+            final_position = (
+                center[0] + blocker_pos_x,
+                center[1] + blocker_pos_y,
+                center[2] + blocker_pos_z
+            )
 
-                app.logger.info(f"Generating default cylinder blocker (radius={cylinder_radius}mm, height={cylinder_height}mm)")
+            if blocker_type == 'cylinder':
+                app.logger.info(f"Generating cylinder blocker (radius={cylinder_radius}mm, height={cylinder_height}mm)")
                 app.logger.info(f"  Input mesh bounds: min={min_coords}, max={max_coords}")
                 app.logger.info(f"  Center position: {center}")
                 app.logger.info(f"  Position offset: ({blocker_pos_x}, {blocker_pos_y}, {blocker_pos_z})")
@@ -425,7 +433,25 @@ def process_stl():
                     segments=32
                 )
                 app.logger.info(f"Blocker cylinder has {len(blocker_mesh.vectors)} triangles")
-            else:
+
+            elif blocker_type == 'cube':
+                app.logger.info(f"Generating cube blocker (width={cube_width}mm, height={cube_height}mm, depth={cube_depth}mm)")
+                app.logger.info(f"  Input mesh bounds: min={min_coords}, max={max_coords}")
+                app.logger.info(f"  Center position: {center}")
+                app.logger.info(f"  Position offset: ({blocker_pos_x}, {blocker_pos_y}, {blocker_pos_z})")
+                app.logger.info(f"  Final position: {final_position}")
+                app.logger.info(f"  Rotation: ({blocker_rot_x}, {blocker_rot_y}, {blocker_rot_z}) degrees")
+
+                blocker_mesh = generate_blocker_cube(
+                    width=cube_width,
+                    height=cube_height,
+                    depth=cube_depth,
+                    position=final_position,
+                    rotation=(blocker_rot_x, blocker_rot_y, blocker_rot_z)
+                )
+                app.logger.info(f"Blocker cube has {len(blocker_mesh.vectors)} triangles")
+
+            elif blocker_type == 'custom':
                 # Load custom blocker STL
                 if 'blocker_file' not in request.files:
                     return jsonify({'error': 'Blocker enabled but no blocker file uploaded'}), 400

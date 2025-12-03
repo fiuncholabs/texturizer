@@ -477,6 +477,64 @@ def generate_blocker_cylinder(radius=10, height=30, position=(0, 0, 0), rotation
     return cylinder
 
 
+def generate_blocker_cube(width=10, height=10, depth=10, position=(0, 0, 0), rotation=(0, 0, 0)):
+    """
+    Generate a cube/box to use as a blocker volume.
+
+    Args:
+        width: Cube width (X-axis) in mm (default 10mm)
+        height: Cube height (Z-axis) in mm (default 10mm)
+        depth: Cube depth (Y-axis) in mm (default 10mm)
+        position: (x, y, z) position of cube center (default (0, 0, 0))
+        rotation: (rx, ry, rz) rotation in degrees around origin axes X, Y, Z (default (0, 0, 0))
+
+    Returns:
+        mesh.Mesh object representing a closed cube
+
+    Note:
+        Rotation is applied BEFORE translation, matching the cylinder behavior.
+    """
+    import trimesh
+
+    # Create box using trimesh (centered at origin)
+    cube_trimesh = trimesh.creation.box(extents=[width, depth, height])
+
+    # Apply rotations FIRST (using the same logic as cylinder)
+    rx, ry, rz = rotation
+    if rx != 0 or ry != 0 or rz != 0:
+        # Convert Z-up to Y-up
+        to_yup = trimesh.transformations.rotation_matrix(np.radians(-90), [1, 0, 0])
+
+        # Apply user rotations in Y-up space (left-to-right multiplication)
+        user_transform = np.eye(4)
+        if rx != 0:
+            user_transform = user_transform @ trimesh.transformations.rotation_matrix(np.radians(rx), [1, 0, 0])
+        if rz != 0:
+            user_transform = user_transform @ trimesh.transformations.rotation_matrix(np.radians(rz), [0, 1, 0])
+        if ry != 0:
+            user_transform = user_transform @ trimesh.transformations.rotation_matrix(np.radians(-ry), [0, 0, 1])
+
+        # Convert Y-up back to Z-up
+        from_yup = trimesh.transformations.rotation_matrix(np.radians(90), [1, 0, 0])
+
+        # Combine transformations
+        transform = from_yup @ user_transform @ to_yup
+        cube_trimesh.apply_transform(transform)
+
+    # Then apply translation
+    if position != (0, 0, 0):
+        transform = trimesh.transformations.translation_matrix(position)
+        cube_trimesh.apply_transform(transform)
+
+    # Convert to numpy-stl format
+    cube = mesh.Mesh(np.zeros(len(cube_trimesh.faces), dtype=mesh.Mesh.dtype))
+    for i, face in enumerate(cube_trimesh.faces):
+        for j in range(3):
+            cube.vectors[i][j] = cube_trimesh.vertices[face[j]]
+
+    return cube
+
+
 def point_inside_mesh_volume(points, blocker_mesh, algorithm='ray_casting'):
     """
     Check if points are inside a blocker mesh volume.
