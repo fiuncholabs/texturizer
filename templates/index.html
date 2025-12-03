@@ -490,6 +490,15 @@
                     </label>
                 </div>
 
+                <div id="blockerVisibilitySection" style="display:none">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showBlocker" checked>
+                            Show blocker in viewer
+                        </label>
+                    </div>
+                </div>
+
                 <div id="blockerSection" style="display:none">
                     <div class="form-group">
                         <label class="checkbox-label">
@@ -1017,6 +1026,8 @@
         // Blocker controls event handlers
         const useBlocker = document.getElementById('useBlocker');
         const blockerSection = document.getElementById('blockerSection');
+        const blockerVisibilitySection = document.getElementById('blockerVisibilitySection');
+        const showBlocker = document.getElementById('showBlocker');
         const useDefaultCylinder = document.getElementById('useDefaultCylinder');
         const blockerUploadSection = document.getElementById('blockerUploadSection');
         const cylinderOptions = document.getElementById('cylinderOptions');
@@ -1026,10 +1037,17 @@
 
         useBlocker.addEventListener('change', (e) => {
             blockerSection.style.display = e.target.checked ? 'block' : 'none';
+            blockerVisibilitySection.style.display = e.target.checked ? 'block' : 'none';
             if (e.target.checked && useDefaultCylinder.checked) {
                 generateDefaultCylinderPreview();
             } else if (!e.target.checked) {
                 removeBlocker();
+            }
+        });
+
+        showBlocker.addEventListener('change', (e) => {
+            if (blockerMesh) {
+                blockerMesh.visible = e.target.checked;
             }
         });
 
