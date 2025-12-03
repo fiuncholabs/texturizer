@@ -10,7 +10,6 @@ This guide covers deployment options for the STL Texturizer web application.
   - [Railway](#railway)
   - [Fly.io](#flyio)
   - [DigitalOcean App Platform](#digitalocean-app-platform)
-  - [Docker (Self-Hosted)](#docker-self-hosted)
 - [Production Checklist](#production-checklist)
 - [Monitoring & Troubleshooting](#monitoring--troubleshooting)
 
@@ -221,7 +220,8 @@ Create `railway.json`:
    primary_region = "sjc"
 
    [build]
-     dockerfile = "Dockerfile"
+     builder = "paketobuildpacks/builder:base"
+     buildpacks = ["gcr.io/paketo-buildpacks/python"]
 
    [env]
      FLASK_ENV = "production"
@@ -335,113 +335,6 @@ services:
 
 ---
 
-### Docker (Self-Hosted)
-
-**Cost:** $6-24/month (VPS hosting)
-
-#### Local Docker Testing:
-
-```bash
-# Build image
-docker build -t stl-texturizer .
-
-# Run container
-docker run -p 8000:8000 \
-  -e FLASK_ENV=production \
-  -e SECRET_KEY=your-secret-key \
-  stl-texturizer
-```
-
-#### Docker Compose:
-
-Create `docker-compose.yml`:
-```yaml
-version: '3.8'
-
-services:
-  web:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      - FLASK_ENV=production
-      - SECRET_KEY=${SECRET_KEY}
-      - RATELIMIT_ENABLED=true
-      - MAX_CONTENT_LENGTH=52428800
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-```
-
-Run with:
-```bash
-docker-compose up -d
-```
-
-#### Deploy to VPS (DigitalOcean, Linode, Vultr):
-
-1. **SSH into your VPS:**
-   ```bash
-   ssh user@your-server-ip
-   ```
-
-2. **Install Docker:**
-   ```bash
-   curl -fsSL https://get.docker.com -o get-docker.sh
-   sh get-docker.sh
-   ```
-
-3. **Clone repository:**
-   ```bash
-   git clone https://github.com/your-username/texturizer.git
-   cd texturizer
-   ```
-
-4. **Set environment variables:**
-   ```bash
-   export SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
-   ```
-
-5. **Run with Docker Compose:**
-   ```bash
-   docker-compose up -d
-   ```
-
-6. **Setup Nginx reverse proxy (optional but recommended):**
-   ```nginx
-   server {
-       listen 80;
-       server_name your-domain.com;
-
-       location / {
-           proxy_pass http://localhost:8000;
-           proxy_set_header Host $host;
-           proxy_set_header X-Real-IP $remote_addr;
-           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-           proxy_set_header X-Forwarded-Proto $scheme;
-
-           # Increase timeouts for large file processing
-           proxy_read_timeout 600s;
-           proxy_send_timeout 600s;
-
-           # Increase max body size
-           client_max_body_size 50M;
-       }
-   }
-   ```
-
-7. **Setup SSL with Let's Encrypt:**
-   ```bash
-   sudo apt install certbot python3-certbot-nginx
-   sudo certbot --nginx -d your-domain.com
-   ```
-
----
-
 ## Production Checklist
 
 Before deploying to production:
@@ -488,7 +381,6 @@ Expected response:
 - **Railway:** Dashboard → Deployments → View logs
 - **Fly.io:** `fly logs`
 - **DigitalOcean:** Console → Runtime Logs
-- **Docker:** `docker logs <container-name>`
 
 ### Common Issues
 

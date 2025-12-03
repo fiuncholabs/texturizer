@@ -188,24 +188,16 @@ The web application is production-ready and can be deployed to various platforms
 - **Railway** (~$10-20/month)
 - **Fly.io** (~$5-15/month)
 - **DigitalOcean App Platform** ($24/month)
-- **Docker/VPS** ($6-24/month)
 
 See **[DEPLOYMENT.md](DEPLOYMENT.md)** for detailed deployment instructions.
 
-### Quick Deploy Options
+### Quick Deploy
 
-**Deploy with Docker:**
-```bash
-docker build -t stl-texturizer .
-docker run -p 8000:8000 -e FLASK_ENV=production stl-texturizer
-# Or map to any port: docker run -p 3000:8000 -e FLASK_ENV=production stl-texturizer
-```
-
-**Deploy to Render/Railway/Fly.io:**
+**Deploy to Render/Railway/Fly.io/DigitalOcean:**
 - Push to GitHub
 - Connect repository on platform
-- Platform auto-detects configuration from `Procfile` or `Dockerfile`
-- Set environment variables
+- Platform auto-detects Python app from `Procfile` and `requirements.txt`
+- Set environment variables (see DEPLOYMENT.md)
 - Deploy!
 
 ---
@@ -417,8 +409,8 @@ texturizer/
 ├── templates/
 │   └── index.html         # Web interface with 3D viewer
 ├── requirements.txt       # Python dependencies
-├── Dockerfile             # Docker configuration
 ├── Procfile               # Platform deployment config
+├── runtime.txt            # Python version specification
 ├── gunicorn.conf.py       # Gunicorn production server config
 ├── .env.example           # Environment variables template
 └── DEPLOYMENT.md          # Detailed deployment guide
