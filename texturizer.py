@@ -404,6 +404,142 @@ def generate_test_cube(size=20, object_type=None):
         return generate_simple_cube(size)
 
 
+def generate_blocker_cylinder(radius=10, height=30, position=(0, 0, 0), segments=32):
+    """
+    Generate a cylinder to use as a blocker volume.
+
+    Args:
+        radius: Cylinder radius in mm (default 10mm)
+        height: Cylinder height in mm (default 30mm)
+        position: (x, y, z) position of cylinder center (default (0, 0, 0))
+        segments: Number of sides for the cylinder (default 32)
+
+    Returns:
+        mesh.Mesh object representing a closed cylinder
+    """
+    # Generate vertices for top and bottom circles
+    vertices = []
+    theta = np.linspace(0, 2 * np.pi, segments, endpoint=False)
+
+    # Bottom circle vertices (z = position[2] - height/2)
+    for t in theta:
+        x = position[0] + radius * np.cos(t)
+        y = position[1] + radius * np.sin(t)
+        z = position[2] - height / 2
+        vertices.append([x, y, z])
+
+    # Top circle vertices (z = position[2] + height/2)
+    for t in theta:
+        x = position[0] + radius * np.cos(t)
+        y = position[1] + radius * np.sin(t)
+        z = position[2] + height / 2
+        vertices.append([x, y, z])
+
+    # Center vertices for caps
+    bottom_center = [position[0], position[1], position[2] - height / 2]
+    top_center = [position[0], position[1], position[2] + height / 2]
+    vertices.append(bottom_center)
+    vertices.append(top_center)
+
+    vertices = np.array(vertices)
+    bottom_center_idx = len(vertices) - 2
+    top_center_idx = len(vertices) - 1
+
+    # Generate faces
+    faces = []
+
+    # Side faces (rectangular strips made of 2 triangles each)
+    for i in range(segments):
+        next_i = (i + 1) % segments
+        # Bottom vertex indices
+        b1 = i
+        b2 = next_i
+        # Top vertex indices
+        t1 = i + segments
+        t2 = next_i + segments
+
+        # Two triangles per rectangular face
+        faces.append([b1, t1, b2])
+        faces.append([b2, t1, t2])
+
+    # Bottom cap (triangles radiating from center)
+    for i in range(segments):
+        next_i = (i + 1) % segments
+        faces.append([bottom_center_idx, next_i, i])
+
+    # Top cap (triangles radiating from center)
+    for i in range(segments):
+        next_i = (i + 1) % segments
+        faces.append([top_center_idx, i + segments, next_i + segments])
+
+    faces = np.array(faces)
+
+    # Create mesh
+    cylinder = mesh.Mesh(np.zeros(len(faces), dtype=mesh.Mesh.dtype))
+    for i, face in enumerate(faces):
+        for j in range(3):
+            cylinder.vectors[i][j] = vertices[face[j]]
+
+    return cylinder
+
+
+def point_inside_mesh_volume(points, blocker_mesh, algorithm='bounding_cylinder'):
+    """
+    Check if points are inside a blocker mesh volume.
+
+    Args:
+        points: Nx3 numpy array of vertex positions
+        blocker_mesh: mesh.Mesh object (blocker volume)
+        algorithm: 'bounding_cylinder' (default) or 'bounding_box'
+
+    Returns:
+        Boolean array of length N (True if inside volume)
+    """
+    if algorithm == 'bounding_cylinder':
+        # For cylinders: check if point is within cylindrical bounds
+        # 1. Calculate cylinder center and dimensions from mesh
+        all_vertices = blocker_mesh.vectors.reshape(-1, 3)
+
+        # Get bounding box
+        min_z = np.min(all_vertices[:, 2])
+        max_z = np.max(all_vertices[:, 2])
+        center_x = np.mean(all_vertices[:, 0])
+        center_y = np.mean(all_vertices[:, 1])
+
+        # Estimate radius as max distance from center axis in XY plane
+        distances_xy = np.sqrt((all_vertices[:, 0] - center_x)**2 +
+                               (all_vertices[:, 1] - center_y)**2)
+        radius = np.max(distances_xy)
+
+        # Check each point
+        inside = np.zeros(len(points), dtype=bool)
+        for i, point in enumerate(points):
+            # Check Z bounds
+            if point[2] < min_z or point[2] > max_z:
+                continue
+
+            # Check radial distance from center axis
+            dist_from_axis = np.sqrt((point[0] - center_x)**2 +
+                                    (point[1] - center_y)**2)
+            if dist_from_axis <= radius:
+                inside[i] = True
+
+        return inside
+
+    elif algorithm == 'bounding_box':
+        # Simple bounding box check
+        all_vertices = blocker_mesh.vectors.reshape(-1, 3)
+        min_bounds = np.min(all_vertices, axis=0)
+        max_bounds = np.max(all_vertices, axis=0)
+
+        # Check if each point is within bounds
+        inside = np.all((points >= min_bounds) & (points <= max_bounds), axis=1)
+        return inside
+
+    else:
+        raise ValueError(f"Unknown algorithm: {algorithm}")
+
+
 def estimate_output_size(input_mesh, point_distance=0.8, skip_small_triangles=False):
     """
     Estimate the output STL file size and triangle count before processing.
@@ -646,7 +782,8 @@ def subdivide_triangle(v0, v1, v2, max_edge_length):
 
 def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                      noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
-                     noise_persistence=0.5, skip_bottom=False, skip_small_triangles=False):
+                     noise_persistence=0.5, skip_bottom=False, skip_small_triangles=False,
+                     blocker_mesh=None):
     """
     Apply fuzzy skin texture to mesh by subdividing and displacing vertices.
 
@@ -661,6 +798,8 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
         noise_persistence: Amplitude persistence for Perlin/Billow noise
         skip_bottom: If True, skip fuzzy skin on bottom layer (z ≈ min_z)
         skip_small_triangles: If True, skip subdivision for triangles with at least one edge < point_distance
+        blocker_mesh: mesh.Mesh object representing a blocker volume (optional). Vertices inside this
+                      volume will not have fuzzy skin applied.
     """
     np.random.seed(seed)
 
@@ -801,7 +940,15 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     displaced_vertices = unique_vertices.copy()
 
     # Determine which vertices to process
-    if skip_bottom:
+    if blocker_mesh is not None:
+        # Check which vertices are inside blocker volume
+        print("Checking vertices against blocker volume...")
+        blocker_mask = point_inside_mesh_volume(unique_vertices, blocker_mesh)
+        process_mask = ~blocker_mask  # Don't process vertices inside blocker
+        skipped_count = np.sum(blocker_mask)
+        if skipped_count > 0:
+            print(f"Blocked {skipped_count} vertices inside blocker volume")
+    elif skip_bottom:
         process_mask = unique_vertices[:, 2] > bottom_threshold
         skipped_count = np.sum(~process_mask)
     else:
@@ -819,7 +966,7 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     displaced_vertices += vertex_normals * displacement_amounts[:, np.newaxis]
 
     # Zero out displacement for skipped vertices
-    if skip_bottom:
+    if blocker_mesh is not None or skip_bottom:
         displaced_vertices[~process_mask] = unique_vertices[~process_mask]
 
     if skip_bottom and skipped_count > 0:
