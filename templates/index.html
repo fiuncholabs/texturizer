@@ -520,21 +520,22 @@
                     <div id="cylinderOptions">
                         <div class="form-group">
                             <label for="cylinderRadius">Cylinder Radius (mm)</label>
-                            <input type="number" id="cylinderRadius" value="10" min="1" max="100" step="1">
+                            <input type="number" id="cylinderRadius" value="5" min="1" max="100" step="1">
                         </div>
                         <div class="form-group">
                             <label for="cylinderHeight">Cylinder Height (mm)</label>
-                            <input type="number" id="cylinderHeight" value="30" min="1" max="200" step="1">
+                            <input type="number" id="cylinderHeight" value="25" min="1" max="200" step="1">
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label for="blockerAlgorithm">Detection Algorithm</label>
                         <select id="blockerAlgorithm">
-                            <option value="ray_casting" selected>Ray Casting (Accurate)</option>
+                            <option value="double_stl" selected>Double STL (Fast & Accurate)</option>
                             <option value="bounding_box">Bounding Box (Fast)</option>
                             <option value="bounding_sphere">Bounding Sphere (Fast)</option>
                             <option value="bounding_cylinder">Bounding Cylinder (Fast)</option>
+                            <option value="ray_casting">Ray Casting (Slow)</option>
                         </select>
                     </div>
                 </div>
@@ -744,7 +745,7 @@
             renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
         }
 
-        function loadSTL(arrayBuffer) {
+        function loadSTL(arrayBuffer, splitMetadata = null) {
             if (currentMesh) {
                 scene.remove(currentMesh);
             }
@@ -752,16 +753,56 @@
             const loader = new THREE.STLLoader();
             const geometry = loader.parse(arrayBuffer);
 
-            const material = new THREE.MeshPhongMaterial({
-                color: 0x4ade80,
-                specular: 0x111111,
-                shininess: 200
-            });
-
-            currentMesh = new THREE.Mesh(geometry, material);
-
             // Rotate to match slicer convention (STL uses Z-up, Three.js uses Y-up)
             geometry.rotateX(-Math.PI / 2);
+
+            // Check if we need dual-color rendering (for double_stl algorithm)
+            if (splitMetadata && splitMetadata.splitIndex > 0) {
+                // Create vertex colors for dual-color rendering
+                const positions = geometry.attributes.position;
+                const colors = new Float32Array(positions.count * 3);
+
+                // Green for outside (processed), Yellow for inside (unprocessed)
+                const greenColor = new THREE.Color(0x4ade80);  // Green
+                const yellowColor = new THREE.Color(0xffd700); // Yellow/Gold
+
+                // Each triangle has 3 vertices
+                const splitIndex = splitMetadata.splitIndex;
+                for (let i = 0; i < positions.count / 3; i++) {
+                    const triangleIndex = i;
+                    const color = triangleIndex < splitIndex ? greenColor : yellowColor;
+
+                    // Set color for all 3 vertices of this triangle
+                    for (let j = 0; j < 3; j++) {
+                        const vertexIndex = i * 3 + j;
+                        colors[vertexIndex * 3] = color.r;
+                        colors[vertexIndex * 3 + 1] = color.g;
+                        colors[vertexIndex * 3 + 2] = color.b;
+                    }
+                }
+
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+                // Material with vertex colors
+                const material = new THREE.MeshPhongMaterial({
+                    vertexColors: true,
+                    specular: 0x111111,
+                    shininess: 200
+                });
+
+                currentMesh = new THREE.Mesh(geometry, material);
+
+                console.log(`Dual-color rendering: ${splitMetadata.outsideCount} green triangles (outside), ${splitMetadata.insideCount} yellow triangles (inside)`);
+            } else {
+                // Single color rendering (default green)
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x4ade80,
+                    specular: 0x111111,
+                    shininess: 200
+                });
+
+                currentMesh = new THREE.Mesh(geometry, material);
+            }
 
             // Center horizontally and place on grid (bottom at y=0)
             geometry.computeBoundingBox();
@@ -834,8 +875,24 @@
 
             blockerMesh = new THREE.Mesh(geometry, material);
 
-            // Position blocker at origin (Y axis is up in Three.js)
-            blockerMesh.position.set(0, height / 2, 0);
+            // Position blocker at the center of the visible mesh
+            // The backend positions the blocker at the mesh center in STL coordinates (Z-up)
+            // After rotation to Y-up and centering, the blocker should be at (0, centerY, 0)
+            // where centerY is the vertical center of the mesh bounds
+            if (currentMesh && currentMesh.geometry.boundingBox) {
+                const bbox = currentMesh.geometry.boundingBox;
+                const meshCenter = new THREE.Vector3();
+                bbox.getCenter(meshCenter);
+
+                // The currentMesh is already positioned, so we need to account for that
+                const worldCenter = meshCenter.clone().add(currentMesh.position);
+
+                // Position blocker at the center
+                blockerMesh.position.copy(worldCenter);
+            } else {
+                // Fallback: position at origin with height offset
+                blockerMesh.position.set(0, height / 2, 0);
+            }
 
             scene.add(blockerMesh);
         }
@@ -1015,6 +1072,11 @@
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     loadSTL(event.target.result);
+
+                    // Update blocker preview if blocker is enabled
+                    if (useBlocker.checked && useDefaultCylinder.checked) {
+                        generateDefaultCylinderPreview();
+                    }
                 };
                 reader.readAsArrayBuffer(file);
 
@@ -1307,9 +1369,24 @@
                 processedBlob = await response.blob();
                 processedFilename = filename;
 
-                // Load processed model in viewer
+                // Extract split metadata if using double_stl algorithm
+                let splitMetadata = null;
+                const splitIndex = response.headers.get('X-Split-Index');
+                const outsideCount = response.headers.get('X-Outside-Count');
+                const insideCount = response.headers.get('X-Inside-Count');
+
+                if (splitIndex && outsideCount && insideCount) {
+                    splitMetadata = {
+                        splitIndex: parseInt(splitIndex),
+                        outsideCount: parseInt(outsideCount),
+                        insideCount: parseInt(insideCount)
+                    };
+                    console.log('Double STL metadata:', splitMetadata);
+                }
+
+                // Load processed model in viewer with dual-color support
                 const arrayBuffer = await processedBlob.arrayBuffer();
-                loadSTL(arrayBuffer);
+                loadSTL(arrayBuffer, splitMetadata);
 
                 // Enable download button
                 downloadBtn.disabled = false;

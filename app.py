@@ -388,12 +388,19 @@ def process_stl():
         blocker_mesh = None
         if use_blocker:
             if use_default_cylinder:
-                # Generate default cylinder blocker
+                # Calculate the center of the input mesh for blocker positioning
+                min_coords = input_mesh.vectors.min(axis=(0, 1))
+                max_coords = input_mesh.vectors.max(axis=(0, 1))
+                center = (min_coords + max_coords) / 2
+
+                # Generate default cylinder blocker at the center of the input mesh
                 app.logger.info(f"Generating default cylinder blocker (radius={cylinder_radius}mm, height={cylinder_height}mm)")
+                app.logger.info(f"  Input mesh bounds: min={min_coords}, max={max_coords}")
+                app.logger.info(f"  Positioning blocker at center: {center}")
                 blocker_mesh = generate_blocker_cylinder(
                     radius=cylinder_radius,
                     height=cylinder_height,
-                    position=(0, 0, 0),
+                    position=tuple(center),
                     segments=32
                 )
                 app.logger.info(f"Blocker cylinder has {len(blocker_mesh.vectors)} triangles")
@@ -497,12 +504,27 @@ def process_stl():
 
         app.logger.info(f"Successfully processed - output size: {len(output_data) / 1024:.1f} KB")
 
-        return send_file(
+        # Create response with STL file
+        response = send_file(
             io.BytesIO(output_data),
             mimetype='application/octet-stream',
             as_attachment=True,
             download_name=output_filename
         )
+
+        # Add metadata headers if using double_stl algorithm
+        if use_blocker and blocker_algorithm == 'double_stl' and hasattr(output_mesh, 'metadata'):
+            split_index = output_mesh.metadata.get('split_index', 0)
+            outside_count = output_mesh.metadata.get('outside_count', 0)
+            inside_count = output_mesh.metadata.get('inside_count', 0)
+
+            response.headers['X-Split-Index'] = str(split_index)
+            response.headers['X-Outside-Count'] = str(outside_count)
+            response.headers['X-Inside-Count'] = str(inside_count)
+
+            app.logger.info(f"Added split metadata headers: split_index={split_index}, outside={outside_count}, inside={inside_count}")
+
+        return response
 
     except Exception as e:
         app.logger.error(f"Unexpected error: {str(e)}", exc_info=True)
