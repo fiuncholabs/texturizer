@@ -1078,11 +1078,17 @@ def check_processing_feasibility(input_mesh, point_distance=0.8,
     }
 
 
-def subdivide_triangle(v0, v1, v2, max_edge_length):
+def subdivide_triangle(v0, v1, v2, max_edge_length, xy_plane_only=False):
     """
     Recursively subdivide a triangle until all edges are below max_edge_length.
     Returns a list of triangles (each triangle is a tuple of 3 vertices).
     Uses iterative approach with a queue for better performance.
+
+    Args:
+        v0, v1, v2: Triangle vertices
+        max_edge_length: Maximum allowed edge length
+        xy_plane_only: If True, calculate edge lengths in XY plane only (ignore Z),
+                      matching OrcaSlicer's fuzzy skin behavior
     """
     # Use a queue for iterative processing instead of recursion
     queue = [(v0, v1, v2)]
@@ -1092,9 +1098,16 @@ def subdivide_triangle(v0, v1, v2, max_edge_length):
         v0, v1, v2 = queue.pop()
 
         # Calculate edge lengths
-        e0 = np.linalg.norm(v1 - v0)
-        e1 = np.linalg.norm(v2 - v1)
-        e2 = np.linalg.norm(v0 - v2)
+        if xy_plane_only:
+            # Calculate XY-plane distance only (ignore Z component)
+            e0 = np.linalg.norm(v1[:2] - v0[:2])
+            e1 = np.linalg.norm(v2[:2] - v1[:2])
+            e2 = np.linalg.norm(v0[:2] - v2[:2])
+        else:
+            # Calculate full 3D distance
+            e0 = np.linalg.norm(v1 - v0)
+            e1 = np.linalg.norm(v2 - v1)
+            e2 = np.linalg.norm(v0 - v2)
         max_edge = max(e0, e1, e2)
 
         # Base case: triangle is small enough
@@ -1199,7 +1212,7 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                      noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
                      noise_persistence=0.5, skip_bottom=False, skip_small_triangles=False,
                      blocker_mesh=None, blocker_algorithm='double_stl', noise_on_edges=False,
-                     in_plane_noise=False):
+                     in_plane_noise=False, xy_plane_subdivision=False):
     """
     Apply fuzzy skin texture to mesh by subdividing and displacing vertices.
 
@@ -1219,6 +1232,8 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
         blocker_algorithm: Always 'double_stl' - splits mesh into inside/outside, applies fuzzy only to outside
         noise_on_edges: If True, apply noise per-triangle using edge midpoints instead of per-vertex (eliminates seams)
         in_plane_noise: If True, apply noise only in XY plane (like OrcaSlicer), ignoring Z component of normals
+        xy_plane_subdivision: If True, calculate edge lengths in XY plane only for subdivision (like OrcaSlicer).
+                             Reduces over-subdivision on vertical surfaces.
     """
     np.random.seed(seed)
 
@@ -1254,7 +1269,8 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                 blocker_mesh=None,  # No blocker for recursive call
                 blocker_algorithm='ray_casting',  # Not used since blocker_mesh is None
                 noise_on_edges=noise_on_edges,
-                in_plane_noise=in_plane_noise
+                in_plane_noise=in_plane_noise,
+                xy_plane_subdivision=xy_plane_subdivision
             )
 
             # Combine processed outside with unprocessed inside
@@ -1300,9 +1316,16 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     sample_edges = []
     for i in range(min(100, len(input_mesh.vectors))):
         v0, v1, v2 = input_mesh.vectors[i]
-        sample_edges.append(np.linalg.norm(v1 - v0))
-        sample_edges.append(np.linalg.norm(v2 - v1))
-        sample_edges.append(np.linalg.norm(v0 - v2))
+        if xy_plane_subdivision:
+            # Calculate XY-plane distance only
+            sample_edges.append(np.linalg.norm(v1[:2] - v0[:2]))
+            sample_edges.append(np.linalg.norm(v2[:2] - v1[:2]))
+            sample_edges.append(np.linalg.norm(v0[:2] - v2[:2]))
+        else:
+            # Calculate full 3D distance
+            sample_edges.append(np.linalg.norm(v1 - v0))
+            sample_edges.append(np.linalg.norm(v2 - v1))
+            sample_edges.append(np.linalg.norm(v0 - v2))
     avg_edge = np.mean(sample_edges)
     subdivision_factor = (avg_edge / point_distance) ** 2
     estimated_output_triangles = len(input_mesh.vectors) * subdivision_factor
@@ -1311,7 +1334,8 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     if estimated_output_triangles > 10_000_000:
         print(f"WARNING: Estimated output size: {estimated_output_triangles:.0f} triangles")
         print(f"This may cause memory issues. Consider increasing point_distance.")
-        print(f"Average input edge length: {avg_edge:.2f}mm, target: {point_distance}mm")
+        mode_str = "XY-plane" if xy_plane_subdivision else "3D"
+        print(f"Average input edge length ({mode_str}): {avg_edge:.2f}mm, target: {point_distance}mm")
 
     # Subdivide all triangles - estimate output size first to avoid reallocation
     # Pre-allocate with estimated size (can grow if needed)
@@ -1326,9 +1350,16 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
 
         # Optimization: skip subdivision if triangle is already small enough
         if skip_small_triangles:
-            e0 = np.linalg.norm(v1 - v0)
-            e1 = np.linalg.norm(v2 - v1)
-            e2 = np.linalg.norm(v0 - v2)
+            if xy_plane_subdivision:
+                # Calculate XY-plane distance only
+                e0 = np.linalg.norm(v1[:2] - v0[:2])
+                e1 = np.linalg.norm(v2[:2] - v1[:2])
+                e2 = np.linalg.norm(v0[:2] - v2[:2])
+            else:
+                # Calculate full 3D distance
+                e0 = np.linalg.norm(v1 - v0)
+                e1 = np.linalg.norm(v2 - v1)
+                e2 = np.linalg.norm(v0 - v2)
             min_edge = min(e0, e1, e2)
 
             # If at least one edge is below point_distance, keep as-is
@@ -1336,9 +1367,9 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                 subdivided = [(v0, v1, v2)]
                 skipped_small += 1
             else:
-                subdivided = subdivide_triangle(v0, v1, v2, point_distance)
+                subdivided = subdivide_triangle(v0, v1, v2, point_distance, xy_plane_only=xy_plane_subdivision)
         else:
-            subdivided = subdivide_triangle(v0, v1, v2, point_distance)
+            subdivided = subdivide_triangle(v0, v1, v2, point_distance, xy_plane_only=xy_plane_subdivision)
 
         # Expand buffer if needed
         if triangle_count + len(subdivided) > len(triangle_buffer):

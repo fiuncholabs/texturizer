@@ -321,6 +321,7 @@ def process_stl():
         skip_small_triangles = request.form.get('skip_small_triangles', 'false').lower() == 'true'
         noise_on_edges = request.form.get('noise_on_edges', 'false').lower() == 'true'
         in_plane_noise = request.form.get('in_plane_noise', 'false').lower() == 'true'
+        xy_plane_subdivision = request.form.get('xy_plane_subdivision', 'false').lower() == 'true'
         use_default_cube = request.form.get('use_default_cube', 'false').lower() == 'true'
         cube_size = float(request.form.get('cube_size', 20))
 
@@ -639,7 +640,8 @@ def process_stl():
                     blocker_mesh=blocker_mesh,
                     blocker_algorithm=blocker_algorithm,
                     noise_on_edges=noise_on_edges,
-                    in_plane_noise=in_plane_noise
+                    in_plane_noise=in_plane_noise,
+                    xy_plane_subdivision=xy_plane_subdivision
                 )
                 output_triangle_count = len(output_mesh.vectors)
                 app.logger.info(f"Output mesh has {output_triangle_count} triangles")

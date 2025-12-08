@@ -559,6 +559,12 @@
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
+                        <input type="checkbox" id="xyPlaneSubdivision">
+                        XY-plane subdivision (OrcaSlicer-style)
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
                         <input type="checkbox" id="simplifyMesh">
                         Mesh simplification
                     </label>
@@ -1792,6 +1798,7 @@
             formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
             formData.append('noise_on_edges', document.getElementById('noiseOnEdges').checked);
             formData.append('in_plane_noise', document.getElementById('inPlaneNoise').checked);
+            formData.append('xy_plane_subdivision', document.getElementById('xyPlaneSubdivision').checked);
 
             // Mesh simplification parameters
             formData.append('simplify_mesh', document.getElementById('simplifyMesh').checked);
@@ -1901,6 +1908,7 @@
             formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
             formData.append('noise_on_edges', document.getElementById('noiseOnEdges').checked);
             formData.append('in_plane_noise', document.getElementById('inPlaneNoise').checked);
+            formData.append('xy_plane_subdivision', document.getElementById('xyPlaneSubdivision').checked);
 
             // Mesh simplification parameters
             formData.append('simplify_mesh', document.getElementById('simplifyMesh').checked);
