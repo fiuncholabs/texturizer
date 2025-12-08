@@ -303,6 +303,11 @@ def process_stl():
     tmp_output_path = None
     tmp_blocker_path = None
 
+    # Track processing statistics
+    import time
+    processing_start = time.time()
+    stats = {}
+
     try:
         # Get parameters
         thickness = float(request.form.get('thickness', 0.3))
@@ -314,6 +319,7 @@ def process_stl():
         noise_persistence = float(request.form.get('noise_persistence', 0.5))
         skip_bottom = request.form.get('skip_bottom', 'false').lower() == 'true'
         skip_small_triangles = request.form.get('skip_small_triangles', 'false').lower() == 'true'
+        noise_on_edges = request.form.get('noise_on_edges', 'false').lower() == 'true'
         use_default_cube = request.form.get('use_default_cube', 'false').lower() == 'true'
         cube_size = float(request.form.get('cube_size', 20))
 
@@ -407,21 +413,36 @@ def process_stl():
             base_name = os.path.splitext(file.filename)[0]
             output_filename = f"{base_name}_fuzzy.stl"
 
-        # Log mesh info
-        app.logger.info(f"Input mesh has {len(input_mesh.vectors)} triangles")
+        # Log mesh info and track initial triangle count
+        original_triangle_count = len(input_mesh.vectors)
+        app.logger.info(f"Input mesh has {original_triangle_count} triangles")
+        stats['input_triangles'] = original_triangle_count
+
+        # Get input file size if available
+        if tmp_input_path:
+            stats['input_size_kb'] = os.path.getsize(tmp_input_path) / 1024
 
         # Apply mesh simplification if enabled (BEFORE triangle optimization and texturing)
         if simplify_mesh_enabled:
             app.logger.info(f"Applying mesh simplification with {int(simplification_ratio * 100)}% reduction")
             try:
                 from texturizer import simplify_mesh
-                input_mesh = simplify_mesh(
+                simplified_mesh = simplify_mesh(
                     input_mesh,
                     target_reduction=simplification_ratio,
                     aggressiveness=7,
                     preserve_border=True
                 )
-                app.logger.info(f"Simplified mesh has {len(input_mesh.vectors)} triangles")
+                simplified_triangle_count = len(simplified_mesh.vectors)
+                app.logger.info(f"Simplified mesh has {simplified_triangle_count} triangles")
+
+                # Track simplification stats
+                stats['simplification'] = {
+                    'original_triangles': original_triangle_count,
+                    'simplified_triangles': simplified_triangle_count,
+                    'reduction_percent': ((original_triangle_count - simplified_triangle_count) / original_triangle_count) * 100
+                }
+                input_mesh = simplified_mesh
             except ImportError as ie:
                 app.logger.error(f"Mesh simplification failed: {str(ie)}")
                 return jsonify({'error': 'Mesh simplification requires pyfqmr library'}), 500
@@ -615,9 +636,16 @@ def process_stl():
                     skip_bottom=skip_bottom,
                     skip_small_triangles=skip_small_triangles,
                     blocker_mesh=blocker_mesh,
-                    blocker_algorithm=blocker_algorithm
+                    blocker_algorithm=blocker_algorithm,
+                    noise_on_edges=noise_on_edges
                 )
-                app.logger.info(f"Output mesh has {len(output_mesh.vectors)} triangles")
+                output_triangle_count = len(output_mesh.vectors)
+                app.logger.info(f"Output mesh has {output_triangle_count} triangles")
+                stats['output_triangles'] = output_triangle_count
+
+                # Capture triangle optimization statistics if available
+                if hasattr(output_mesh, 'metadata') and 'skipped_triangles' in output_mesh.metadata:
+                    stats['skipped_triangles'] = output_mesh.metadata['skipped_triangles']
             except MemoryError:
                 app.logger.error("Out of memory during processing")
                 return jsonify({'error': 'Out of memory. Try increasing point_distance or using a smaller mesh.'}), 500
@@ -636,6 +664,13 @@ def process_stl():
         # Read the output file and send it
         with open(tmp_output_path, 'rb') as f:
             output_data = f.read()
+
+        # Track output file size
+        stats['output_size_kb'] = len(output_data) / 1024
+
+        # Calculate processing time
+        processing_end = time.time()
+        stats['processing_time_seconds'] = processing_end - processing_start
 
         app.logger.info(f"Successfully processed - output size: {len(output_data) / 1024:.1f} KB")
 
@@ -658,6 +693,11 @@ def process_stl():
             response.headers['X-Inside-Count'] = str(inside_count)
 
             app.logger.info(f"Added split metadata headers: split_index={split_index}, outside={outside_count}, inside={inside_count}")
+
+        # Add processing statistics headers
+        import json
+        response.headers['X-Processing-Stats'] = json.dumps(stats)
+        app.logger.info(f"Added processing statistics: {stats}")
 
         return response
 

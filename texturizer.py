@@ -1198,7 +1198,7 @@ def simplify_mesh(input_mesh, target_reduction=0.5, aggressiveness=7, preserve_b
 def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                      noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
                      noise_persistence=0.5, skip_bottom=False, skip_small_triangles=False,
-                     blocker_mesh=None, blocker_algorithm='double_stl'):
+                     blocker_mesh=None, blocker_algorithm='double_stl', noise_on_edges=False):
     """
     Apply fuzzy skin texture to mesh by subdividing and displacing vertices.
 
@@ -1216,6 +1216,7 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
         blocker_mesh: mesh.Mesh object representing a blocker volume (optional). Vertices inside this
                       volume will not have fuzzy skin applied.
         blocker_algorithm: Always 'double_stl' - splits mesh into inside/outside, applies fuzzy only to outside
+        noise_on_edges: If True, apply noise per-triangle using edge midpoints instead of per-vertex (eliminates seams)
     """
     np.random.seed(seed)
 
@@ -1249,7 +1250,8 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                 skip_bottom=skip_bottom,
                 skip_small_triangles=skip_small_triangles,
                 blocker_mesh=None,  # No blocker for recursive call
-                blocker_algorithm='ray_casting'  # Not used since blocker_mesh is None
+                blocker_algorithm='ray_casting',  # Not used since blocker_mesh is None
+                noise_on_edges=noise_on_edges
             )
 
             # Combine processed outside with unprocessed inside
@@ -1446,23 +1448,74 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     # Calculate total skipped count
     skipped_count = np.sum(~process_mask)
 
-    # Get noise values for all vertices to process
-    noise_values = np.zeros(len(unique_vertices))
-    for i in np.where(process_mask)[0]:
-        vertex = unique_vertices[i]
-        noise_values[i] = noise_gen.get_noise(vertex[0], vertex[1], vertex[2])
+    if noise_on_edges:
+        # Edge-based noise: sample noise at triangle centroids but average across all triangles
+        # sharing each vertex. This eliminates seams while maintaining mesh topology.
+        print("Applying edge-based noise displacement (eliminates seams)...")
 
-    # Map noise from [-1, 1] to [0, thickness] and apply displacement (vectorized)
-    displacement_amounts = (noise_values + 1) * 0.5 * thickness
-    displaced_vertices += vertex_normals * displacement_amounts[:, np.newaxis]
+        # Calculate triangle centroids
+        triangle_count = len(output_mesh.vectors)
+        triangle_centroids = np.mean(output_mesh.vectors, axis=1)  # Shape: (N, 3)
 
-    # Zero out displacement for skipped vertices (bottom layer and/or blocker)
-    if skipped_count > 0:
-        displaced_vertices[~process_mask] = unique_vertices[~process_mask]
+        # Sample noise at each triangle centroid
+        triangle_noise = np.zeros(triangle_count)
+        for i in range(triangle_count):
+            centroid = triangle_centroids[i]
+            triangle_noise[i] = noise_gen.get_noise(centroid[0], centroid[1], centroid[2])
 
-    # Update mesh with displaced vertices (vectorized)
-    print("Updating mesh with displaced vertices...")
-    output_mesh.vectors = displaced_vertices[inverse_indices].reshape(-1, 3, 3)
+        # Map noise from [-1, 1] to [0, thickness]
+        triangle_displacement_distances = (triangle_noise + 1) * 0.5 * thickness
+
+        # For each unique vertex, average the displacement from all triangles that use it
+        vertex_displacement_sum = np.zeros(len(unique_vertices))
+        vertex_triangle_count = np.zeros(len(unique_vertices))
+
+        # Map each triangle vertex to its displacement
+        for tri_idx in range(triangle_count):
+            # Get the three vertex indices for this triangle
+            v_indices = inverse_indices[tri_idx*3:(tri_idx+1)*3]
+            displacement = triangle_displacement_distances[tri_idx]
+
+            # Accumulate displacement for each unique vertex
+            for v_idx in v_indices:
+                vertex_displacement_sum[v_idx] += displacement
+                vertex_triangle_count[v_idx] += 1
+
+        # Average the displacements
+        # Avoid division by zero (though vertex_triangle_count should never be 0 for valid meshes)
+        vertex_triangle_count = np.where(vertex_triangle_count == 0, 1, vertex_triangle_count)
+        averaged_displacement = vertex_displacement_sum / vertex_triangle_count
+
+        # Apply averaged displacement along vertex normals
+        displaced_vertices += vertex_normals * averaged_displacement[:, np.newaxis]
+
+        # Zero out displacement for skipped vertices (bottom layer and/or blocker)
+        if skipped_count > 0:
+            displaced_vertices[~process_mask] = unique_vertices[~process_mask]
+
+        # Update mesh with displaced vertices (vectorized)
+        print("Updating mesh with displaced vertices...")
+        output_mesh.vectors = displaced_vertices[inverse_indices].reshape(-1, 3, 3)
+
+    else:
+        # Original vertex-based noise: each vertex gets its own noise value
+        # Get noise values for all vertices to process
+        noise_values = np.zeros(len(unique_vertices))
+        for i in np.where(process_mask)[0]:
+            vertex = unique_vertices[i]
+            noise_values[i] = noise_gen.get_noise(vertex[0], vertex[1], vertex[2])
+
+        # Map noise from [-1, 1] to [0, thickness] and apply displacement (vectorized)
+        displacement_amounts = (noise_values + 1) * 0.5 * thickness
+        displaced_vertices += vertex_normals * displacement_amounts[:, np.newaxis]
+
+        # Zero out displacement for skipped vertices (bottom layer and/or blocker)
+        if skipped_count > 0:
+            displaced_vertices[~process_mask] = unique_vertices[~process_mask]
+
+        # Update mesh with displaced vertices (vectorized)
+        print("Updating mesh with displaced vertices...")
+        output_mesh.vectors = displaced_vertices[inverse_indices].reshape(-1, 3, 3)
 
     # Validate output mesh
     if np.any(np.isnan(output_mesh.vectors)) or np.any(np.isinf(output_mesh.vectors)):
@@ -1471,6 +1524,14 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
         raise ValueError("Invalid mesh output - contains NaN or Inf values")
 
     print("Mesh processing complete!")
+
+    # Store processing statistics in mesh metadata
+    if skip_small_triangles and skipped_small > 0:
+        if not hasattr(output_mesh, 'metadata'):
+            output_mesh.metadata = {}
+        output_mesh.metadata['skipped_triangles'] = skipped_small
+        output_mesh.metadata['input_triangle_count'] = len(input_mesh.vectors)
+
     return output_mesh
 
 def main():

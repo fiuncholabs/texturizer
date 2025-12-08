@@ -547,6 +547,12 @@
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
+                        <input type="checkbox" id="noiseOnEdges">
+                        Noise on edges (eliminates seams)
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
                         <input type="checkbox" id="simplifyMesh">
                         Mesh simplification
                     </label>
@@ -692,6 +698,17 @@
                 <button id="processBtn" class="btn btn-primary">Process STL</button>
                 <button id="downloadBtn" class="btn btn-primary" disabled>Download Result</button>
                 <button id="resetViewBtn" class="btn btn-secondary">Reset View</button>
+
+                <!-- Processing Statistics Panel -->
+                <div class="info-section" id="processingStatsSection" style="display: none; margin-top: 15px;">
+                    <button class="info-toggle" onclick="toggleProcessingStats()">
+                        <span class="info-toggle-icon" id="statsIcon">▶</span>
+                        <span>Processing Statistics</span>
+                    </button>
+                    <div class="info-content" id="processingStatsContent">
+                        <div id="processingStatsDetails"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="viewer-container">
@@ -1263,6 +1280,85 @@
             }
         }
 
+        function toggleProcessingStats() {
+            const content = document.getElementById('processingStatsContent');
+            const icon = document.getElementById('statsIcon');
+
+            if (content.classList.contains('visible')) {
+                content.classList.remove('visible');
+                icon.classList.remove('expanded');
+                icon.textContent = '▶';
+            } else {
+                content.classList.add('visible');
+                icon.classList.add('expanded');
+                icon.textContent = '▼';
+            }
+        }
+
+        function displayProcessingStats(stats) {
+            const statsSection = document.getElementById('processingStatsSection');
+            const statsDetails = document.getElementById('processingStatsDetails');
+
+            let html = '<h3>Processing Summary</h3>';
+
+            // Mesh Simplification
+            if (stats.simplification) {
+                html += '<h3>Mesh Simplification</h3>';
+                html += '<ul>';
+                html += `<li>Original triangles: <strong>${stats.simplification.original_triangles.toLocaleString()}</strong></li>`;
+                html += `<li>Simplified triangles: <strong>${stats.simplification.simplified_triangles.toLocaleString()}</strong></li>`;
+                html += `<li>Reduction: <strong>${stats.simplification.reduction_percent.toFixed(1)}%</strong></li>`;
+                html += '</ul>';
+            }
+
+            // Triangle Optimization
+            if (stats.optimization) {
+                html += '<h3>Triangle Size Optimization</h3>';
+                html += '<ul>';
+                html += `<li>Triangles skipped (already small): <strong>${stats.optimization.skipped_triangles.toLocaleString()}</strong></li>`;
+                if (stats.optimization.skipped_percent !== undefined) {
+                    html += `<li>Skipped percentage: <strong>${stats.optimization.skipped_percent.toFixed(1)}%</strong></li>`;
+                }
+                html += '</ul>';
+            }
+
+            // File Sizes
+            if (stats.file_sizes) {
+                html += '<h3>File Sizes</h3>';
+                html += '<ul>';
+                if (stats.file_sizes.input_size_kb) {
+                    html += `<li>Input STL: <strong>${stats.file_sizes.input_size_kb.toFixed(1)} KB</strong></li>`;
+                }
+                html += `<li>Output STL: <strong>${stats.file_sizes.output_size_kb.toFixed(1)} KB</strong></li>`;
+                if (stats.file_sizes.size_increase_percent !== undefined) {
+                    const sign = stats.file_sizes.size_increase_percent >= 0 ? '+' : '';
+                    html += `<li>Size change: <strong>${sign}${stats.file_sizes.size_increase_percent.toFixed(1)}%</strong></li>`;
+                }
+                html += '</ul>';
+            }
+
+            // Processing Time
+            if (stats.processing_time) {
+                html += '<h3>Processing Time</h3>';
+                html += '<ul>';
+                html += `<li>Total time: <strong>${stats.processing_time.total_seconds.toFixed(2)} seconds</strong></li>`;
+                html += '</ul>';
+            }
+
+            // Triangle Counts
+            if (stats.triangles) {
+                html += '<h3>Triangle Counts</h3>';
+                html += '<ul>';
+                html += `<li>Input mesh: <strong>${stats.triangles.input.toLocaleString()}</strong></li>`;
+                html += `<li>Output mesh: <strong>${stats.triangles.output.toLocaleString()}</strong></li>`;
+                html += `<li>Increase: <strong>${((stats.triangles.output / stats.triangles.input - 1) * 100).toFixed(1)}%</strong></li>`;
+                html += '</ul>';
+            }
+
+            statsDetails.innerHTML = html;
+            statsSection.style.display = 'block';
+        }
+
         // UI handling
         const fileInput = document.getElementById('stlFile');
         const fileNameDisplay = document.getElementById('fileName');
@@ -1688,6 +1784,7 @@
             formData.append('noise_persistence', document.getElementById('noisePersistence').value);
             formData.append('skip_bottom', document.getElementById('skipBottom').checked);
             formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
+            formData.append('noise_on_edges', document.getElementById('noiseOnEdges').checked);
 
             // Mesh simplification parameters
             formData.append('simplify_mesh', document.getElementById('simplifyMesh').checked);
@@ -1795,6 +1892,7 @@
             formData.append('noise_persistence', document.getElementById('noisePersistence').value);
             formData.append('skip_bottom', document.getElementById('skipBottom').checked);
             formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
+            formData.append('noise_on_edges', document.getElementById('noiseOnEdges').checked);
 
             // Mesh simplification parameters
             formData.append('simplify_mesh', document.getElementById('simplifyMesh').checked);
@@ -1881,6 +1979,64 @@
                         insideCount: parseInt(insideCount)
                     };
                     console.log('Double STL metadata:', splitMetadata);
+                }
+
+                // Extract and display processing statistics
+                const statsHeader = response.headers.get('X-Processing-Stats');
+                if (statsHeader) {
+                    try {
+                        const rawStats = JSON.parse(statsHeader);
+                        console.log('Raw processing stats:', rawStats);
+
+                        // Format statistics for display
+                        const stats = {};
+
+                        // Mesh simplification stats
+                        if (rawStats.simplification) {
+                            stats.simplification = rawStats.simplification;
+                        }
+
+                        // Triangle optimization stats
+                        if (rawStats.skipped_triangles !== undefined) {
+                            const inputCount = rawStats.input_triangles || rawStats.output_triangles;
+                            stats.optimization = {
+                                skipped_triangles: rawStats.skipped_triangles,
+                                skipped_percent: inputCount ? (rawStats.skipped_triangles / inputCount * 100) : 0
+                            };
+                        }
+
+                        // File sizes
+                        if (rawStats.output_size_kb) {
+                            stats.file_sizes = {
+                                output_size_kb: rawStats.output_size_kb
+                            };
+                            if (rawStats.input_size_kb) {
+                                stats.file_sizes.input_size_kb = rawStats.input_size_kb;
+                                stats.file_sizes.size_increase_percent =
+                                    ((rawStats.output_size_kb - rawStats.input_size_kb) / rawStats.input_size_kb) * 100;
+                            }
+                        }
+
+                        // Processing time
+                        if (rawStats.processing_time_seconds !== undefined) {
+                            stats.processing_time = {
+                                total_seconds: rawStats.processing_time_seconds
+                            };
+                        }
+
+                        // Triangle counts
+                        if (rawStats.input_triangles && rawStats.output_triangles) {
+                            stats.triangles = {
+                                input: rawStats.input_triangles,
+                                output: rawStats.output_triangles
+                            };
+                        }
+
+                        // Display the statistics panel
+                        displayProcessingStats(stats);
+                    } catch (e) {
+                        console.error('Failed to parse processing stats:', e);
+                    }
                 }
 
                 // Load processed model in viewer with dual-color support

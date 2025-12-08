@@ -810,6 +810,153 @@ git push origin main
 - Production deployments should use environment variables, not .env files
 - This incident highlights the importance of secret management infrastructure
 
+### Session: 2025-12-08 (Edge-Based Noise Feature - Eliminate Seams)
+**Work Completed**:
+1. Added "Noise on edges" option to eliminate visible seams between triangles
+2. Fixed broken mesh topology issue from initial implementation
+3. Implemented vertex-based displacement averaging to maintain watertight mesh
+4. Created comprehensive test suite to verify mesh solidity
+
+**Problem Solved**:
+User noticed that the standard fuzzy skin algorithm adds noise to triangle interiors but leaves visible seams at triangle edges. This happens because each triangle samples noise independently, causing discontinuities at shared vertices. The new "noise on edges" option eliminates these seams by sampling noise at triangle centroids and averaging displacement across all triangles sharing each vertex.
+
+**Files Modified**:
+
+1. **templates/index.html** - Added UI checkbox:
+   - Lines 548-553: New checkbox "Noise on edges (eliminates seams)"
+   - Lines 1781, 1889: Pass `noise_on_edges` parameter to backend
+
+2. **texturizer.py** - Implemented edge-based noise algorithm:
+   - Line 1201: Added `noise_on_edges=False` parameter
+   - Line 1219: Updated docstring
+   - Lines 1451-1498: Edge-based noise implementation with vertex averaging
+
+3. **app.py** - Backend parameter handling:
+   - Line 322: Parse `noise_on_edges` from request
+   - Line 640: Pass parameter to `apply_fuzzy_skin()`
+
+4. **test_edge_noise.py** - New test file:
+   - Tests mesh solidity (watertight and volume properties)
+   - Compares edge-based vs vertex-based noise
+   - Saves output meshes for visual inspection
+
+**Algorithm Details**:
+
+**Original Vertex-Based Approach** (creates seams):
+```python
+# Each vertex gets its own noise value
+for vertex in unique_vertices:
+    noise_value = sample_noise(vertex.position)
+    vertex.displace(noise_value * vertex_normal)
+```
+
+**Problem**: Adjacent triangles may have different normals at shared vertices, leading to different noise samples and visible seams.
+
+**New Edge-Based Approach** (eliminates seams):
+```python
+# 1. Sample noise at triangle centroids
+for triangle in mesh.triangles:
+    triangle.noise = sample_noise(triangle.centroid)
+
+# 2. Average displacement for each vertex from all its triangles
+for vertex in unique_vertices:
+    triangles_using_vertex = find_adjacent_triangles(vertex)
+    averaged_displacement = mean([t.noise for t in triangles_using_vertex])
+    vertex.displace(averaged_displacement * vertex_normal)
+```
+
+**Key Implementation Details**:
+- Noise sampled at triangle centroids (not vertices)
+- Each unique vertex accumulates displacements from all adjacent triangles
+- Displacement averaged across all triangles sharing a vertex
+- Applied along vertex normals (maintains smooth shading)
+- Mesh topology preserved (vertices remain shared)
+
+**Technical Decisions**:
+
+**Why Average Displacements?**
+- Ensures adjacent triangles contribute equally to shared vertex displacement
+- Eliminates seams while maintaining mesh watertightness
+- Preserves shared vertex structure (critical for STL validity)
+
+**Why Sample at Triangle Centroids?**
+- Provides consistent noise value per triangle
+- Avoids normal-dependent sampling issues at vertices
+- Simple and efficient to compute
+
+**Why Use Vertex Normals for Displacement?**
+- Maintains smooth visual appearance
+- Prevents faceting artifacts
+- Consistent with original fuzzy skin algorithm
+
+**Bug Fix History**:
+
+**Initial Implementation (Broken)**:
+```python
+# Displaced entire triangles independently - BROKE MESH TOPOLOGY
+for triangle in mesh.triangles:
+    displacement = sample_noise(triangle.centroid)
+    triangle.vertices += displacement * triangle.face_normal
+```
+
+**Problem**: This approach created gaps between triangles because it displaced each triangle's vertices independently, breaking the shared vertex structure.
+
+**Fixed Implementation**:
+```python
+# Work with unique vertices and average displacements
+vertex_displacement_sum = zeros(num_vertices)
+vertex_triangle_count = zeros(num_vertices)
+
+for triangle in mesh.triangles:
+    displacement = sample_noise(triangle.centroid)
+    for vertex_idx in triangle.vertex_indices:
+        vertex_displacement_sum[vertex_idx] += displacement
+        vertex_triangle_count[vertex_idx] += 1
+
+averaged_displacement = vertex_displacement_sum / vertex_triangle_count
+displaced_vertices = unique_vertices + vertex_normals * averaged_displacement
+```
+
+**Test Results**:
+```
+Original mesh: 12 triangles, 8 vertices
+After subdivision: 49,152 triangles, 24,578 vertices
+
+Edge-based noise:   Watertight: True, Is Volume: True ✓
+Vertex-based noise: Watertight: True, Is Volume: True ✓
+```
+
+Both approaches now produce valid watertight meshes, but edge-based eliminates seams.
+
+**Usage Example**:
+1. Upload STL file
+2. Configure fuzzy skin parameters (thickness, point distance, etc.)
+3. Check "Noise on edges (eliminates seams)"
+4. Process mesh
+5. Result: Fuzzy texture without visible triangle seams
+
+**Comparison**:
+
+| Feature | Vertex-Based | Edge-Based |
+|---------|-------------|------------|
+| Seams visible | Yes | No |
+| Mesh watertight | Yes | Yes |
+| Performance | Fast | ~Same |
+| Visual quality | Good | Better (seamless) |
+| Use case | Standard fuzzy skin | OrcaSlicer-like fuzzy skin |
+
+**Notes**:
+- Edge-based noise more closely resembles OrcaSlicer's "fuzzy skin" feature
+- Both algorithms maintain mesh validity and watertightness
+- Averaging displacement prevents seams without breaking topology
+- Test suite validates mesh solidity for both approaches
+- Checkbox allows users to choose based on preference
+
+**Future Considerations**:
+- Could explore other averaging strategies (weighted by triangle area)
+- Could implement edge-midpoint sampling instead of centroid sampling
+- Could add blend factor to mix vertex-based and edge-based approaches
+
 ---
 
 ## Instructions for Future AI Sessions
