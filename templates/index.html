@@ -553,6 +553,12 @@
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
+                        <input type="checkbox" id="inPlaneNoise">
+                        In-plane noise only (XY, like OrcaSlicer)
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
                         <input type="checkbox" id="simplifyMesh">
                         Mesh simplification
                     </label>
@@ -1785,6 +1791,7 @@
             formData.append('skip_bottom', document.getElementById('skipBottom').checked);
             formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
             formData.append('noise_on_edges', document.getElementById('noiseOnEdges').checked);
+            formData.append('in_plane_noise', document.getElementById('inPlaneNoise').checked);
 
             // Mesh simplification parameters
             formData.append('simplify_mesh', document.getElementById('simplifyMesh').checked);
@@ -1893,6 +1900,7 @@
             formData.append('skip_bottom', document.getElementById('skipBottom').checked);
             formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
             formData.append('noise_on_edges', document.getElementById('noiseOnEdges').checked);
+            formData.append('in_plane_noise', document.getElementById('inPlaneNoise').checked);
 
             // Mesh simplification parameters
             formData.append('simplify_mesh', document.getElementById('simplifyMesh').checked);

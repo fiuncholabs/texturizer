@@ -957,6 +957,113 @@ Both approaches now produce valid watertight meshes, but edge-based eliminates s
 - Could implement edge-midpoint sampling instead of centroid sampling
 - Could add blend factor to mix vertex-based and edge-based approaches
 
+### Session: 2025-12-08 (In-Plane Noise Feature - XY Only Displacement)
+**Work Completed**:
+1. Added "In-plane noise only" option to match OrcaSlicer's fuzzy skin behavior
+2. Implemented XY-only displacement by projecting normals onto horizontal plane
+3. Created test suite to verify Z coordinates are preserved
+4. Confirmed original algorithm displaces along vertex normals (3D)
+
+**Problem Identified**:
+User noticed that the noise algorithm applies displacement along vertex normals, which means noise follows surface orientation:
+- Vertical walls → horizontal displacement
+- Top/bottom surfaces → vertical displacement
+- Angled surfaces → displacement follows surface angle
+
+This differs from OrcaSlicer's fuzzy skin, which only displaces in the XY plane (horizontal) regardless of surface orientation.
+
+**Files Modified**:
+
+1. **texturizer.py** - Implemented in-plane noise projection:
+   - Line 1202: Added `in_plane_noise=False` parameter
+   - Line 1221: Updated docstring
+   - Lines 1420-1428: In-plane noise projection logic
+   - Line 1257: Pass parameter to recursive call
+
+2. **templates/index.html** - Added UI checkbox:
+   - Lines 554-559: New checkbox "In-plane noise only (XY, like OrcaSlicer)"
+   - Lines 1794, 1902: Pass `in_plane_noise` parameter to backend
+
+3. **app.py** - Backend parameter handling:
+   - Line 323: Parse `in_plane_noise` from request
+   - Line 642: Pass parameter to `apply_fuzzy_skin()`
+
+4. **test_inplane_noise.py** - New test file:
+   - Compares in-plane vs normal noise behavior
+   - Verifies Z coordinates preserved with in-plane mode
+   - Saves output meshes for visual inspection
+
+**Algorithm Implementation**:
+
+**Original Behavior** (3D displacement):
+```python
+# Displacement applied along vertex normals (all 3 axes)
+displaced_vertices += vertex_normals * displacement_amounts
+```
+
+**In-Plane Noise** (XY only displacement):
+```python
+# Zero out Z component of normals to project onto XY plane
+if in_plane_noise:
+    vertex_normals[:, 2] = 0  # Remove Z component
+    # Renormalize to unit vectors in XY plane
+    norms = np.linalg.norm(vertex_normals, axis=1, keepdims=True)
+    vertex_normals = np.divide(vertex_normals, norms,
+                                out=np.zeros_like(vertex_normals),
+                                where=norms > 0)
+```
+
+**Key Implementation Details**:
+- Z component of vertex normals set to zero
+- Normals renormalized to unit length in XY plane
+- Vertices with zero XY normal (horizontal surfaces) receive zero displacement
+- Maintains mesh topology (still uses shared vertices)
+
+**Technical Decision - Why Project Normals?**:
+Instead of directly modifying XY coordinates, we project normals onto the XY plane because:
+- Consistent with existing displacement pipeline
+- Works with both edge-based and vertex-based noise
+- Maintains code simplicity
+- Automatically handles horizontal surfaces (they get zero displacement)
+
+**Test Results**:
+```
+In-plane noise:  Z range: 0.000 to 20.000 (change: 0.000mm) ✓
+Normal noise:    Z range: -0.500 to 20.500 (change: 0.500mm) ✓
+```
+
+Both modes preserve mesh watertightness and apply XY displacement, but only in-plane mode preserves Z coordinates.
+
+**Comparison**:
+
+| Feature | Normal (3D) | In-Plane (XY only) |
+|---------|-------------|-------------------|
+| Displacement direction | Along surface normals | Horizontal only |
+| Z coordinates | Modified | Preserved |
+| Vertical walls | Outward (horizontal) | Outward (horizontal) |
+| Top/bottom surfaces | Up/down (vertical) | No displacement |
+| Angled surfaces | Follows surface | Horizontal component only |
+| OrcaSlicer match | No | Yes |
+
+**Usage Example**:
+1. Upload STL file
+2. Configure fuzzy skin parameters
+3. Check "In-plane noise only (XY, like OrcaSlicer)"
+4. Process mesh
+5. Result: Fuzzy texture only in horizontal plane, Z dimension preserved
+
+**Notes**:
+- In-plane noise more closely matches OrcaSlicer's fuzzy skin behavior
+- Useful when vertical displacement could cause issues
+- Horizontal surfaces receive no displacement (normal has no XY component)
+- Can be combined with "Noise on edges" for seamless in-plane texture
+- Both modes maintain mesh validity and watertightness
+
+**Future Considerations**:
+- Could add displacement amount control for horizontal surfaces
+- Could implement anisotropic noise (different amounts in X vs Y)
+- Could add option to apply noise only in specific plane (XZ, YZ)
+
 ---
 
 ## Instructions for Future AI Sessions

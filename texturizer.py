@@ -1198,7 +1198,8 @@ def simplify_mesh(input_mesh, target_reduction=0.5, aggressiveness=7, preserve_b
 def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                      noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
                      noise_persistence=0.5, skip_bottom=False, skip_small_triangles=False,
-                     blocker_mesh=None, blocker_algorithm='double_stl', noise_on_edges=False):
+                     blocker_mesh=None, blocker_algorithm='double_stl', noise_on_edges=False,
+                     in_plane_noise=False):
     """
     Apply fuzzy skin texture to mesh by subdividing and displacing vertices.
 
@@ -1217,6 +1218,7 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                       volume will not have fuzzy skin applied.
         blocker_algorithm: Always 'double_stl' - splits mesh into inside/outside, applies fuzzy only to outside
         noise_on_edges: If True, apply noise per-triangle using edge midpoints instead of per-vertex (eliminates seams)
+        in_plane_noise: If True, apply noise only in XY plane (like OrcaSlicer), ignoring Z component of normals
     """
     np.random.seed(seed)
 
@@ -1251,7 +1253,8 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                 skip_small_triangles=skip_small_triangles,
                 blocker_mesh=None,  # No blocker for recursive call
                 blocker_algorithm='ray_casting',  # Not used since blocker_mesh is None
-                noise_on_edges=noise_on_edges
+                noise_on_edges=noise_on_edges,
+                in_plane_noise=in_plane_noise
             )
 
             # Combine processed outside with unprocessed inside
@@ -1413,6 +1416,16 @@ def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
     vertex_normals[mask] /= vertex_counts[mask, np.newaxis]
     norms = np.linalg.norm(vertex_normals, axis=1, keepdims=True)
     vertex_normals = np.divide(vertex_normals, norms, out=np.zeros_like(vertex_normals), where=norms > 0)
+
+    # If in-plane noise is enabled, project normals onto XY plane (zero out Z component)
+    # This makes noise behave like OrcaSlicer's fuzzy skin - only displacing in the horizontal plane
+    if in_plane_noise:
+        print("Applying in-plane (XY only) noise displacement (OrcaSlicer-style)...")
+        # Zero out Z component of normals
+        vertex_normals[:, 2] = 0
+        # Renormalize (only for vertices that had XY components)
+        norms = np.linalg.norm(vertex_normals, axis=1, keepdims=True)
+        vertex_normals = np.divide(vertex_normals, norms, out=np.zeros_like(vertex_normals), where=norms > 0)
 
     # Apply displacement to each unique vertex using noise
     displaced_vertices = unique_vertices.copy()
