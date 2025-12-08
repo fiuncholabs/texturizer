@@ -712,6 +712,104 @@ transform = from_yup @ user_transform @ to_yup
 - Blocker presets (common shapes/sizes)
 - Blocker library (save/load custom blockers)
 
+### Session: 2025-12-08 (Security Fix - OAuth2 Credentials Leak)
+**Work Completed**:
+1. Discovered and fixed critical security issue: .env file with OAuth2 credentials was tracked in git
+2. Fixed corrupted .gitignore file (had encoding issues)
+3. Added .env to .gitignore properly
+4. Removed .env from git tracking (git rm --cached)
+5. Sanitized .env file with placeholder values
+
+**Commits**:
+- `b26b939` - Update AI_DEVELOPMENT_CONTEXT with blocker volume feature and deployment cleanup
+- `2e28c6c` - SECURITY FIX: Remove .env file with exposed OAuth2 credentials
+
+**Security Issue Details**:
+
+**Problem**: The `.env` file was being tracked by git and contained actual OAuth2 credentials:
+- OAuth2 Client ID: `342254914296-lsa8lbp057lafv12tfc7mnraante9vqu.apps.googleusercontent.com`
+- OAuth2 Client Secret: `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` (EXPOSED - must be revoked)
+- First committed in: commit `60e645e` (blocker algorithm feature)
+
+**Root Cause**:
+- `.gitignore` file was corrupted with encoding issues (showed as `��f u z z y _ o u t p u t . s t l`)
+- `.env` was never added to `.gitignore`
+- File was tracked and pushed to GitHub repository
+
+**Files Modified**:
+
+1. **`.gitignore`** - Fixed and expanded:
+   ```
+   fuzzy_output.stl
+   *.stl
+   __pycache__
+   OrcaSlicer
+   .env          # ADDED
+   venv/         # ADDED
+   *.pyc         # ADDED
+   .DS_Store     # ADDED
+   ```
+
+2. **`.env`** - Sanitized OAuth credentials (local file only, not tracked anymore):
+   - Changed `ENABLE_GOOGLE_AUTH=true` to `false`
+   - Changed `GOOGLE_CLIENT_ID` to placeholder: `your-client-id.apps.googleusercontent.com`
+   - Changed `GOOGLE_CLIENT_SECRET` to placeholder: `your-client-secret`
+
+**Commands Executed**:
+```bash
+# Remove .env from git tracking (but keep local file)
+git rm --cached .env
+
+# Commit the security fix
+git add .gitignore
+git commit -m "SECURITY FIX: Remove .env file with exposed OAuth2 credentials"
+git push origin main
+```
+
+**Status of Exposed Credentials**:
+
+| Credential | Value | Status | Action Required |
+|------------|-------|--------|-----------------|
+| OAuth2 Client ID | 342254914296-lsa8lbp057lafv12tfc7mnraante9vqu | Exposed in git history | Can be public, but associated secret must be revoked |
+| OAuth2 Client Secret | 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 | **COMPROMISED** | **MUST BE REVOKED IMMEDIATELY** |
+| SECRET_KEY | dev-secret-key-for-testing-only-change-in-production | Exposed but harmless | Development placeholder only, safe |
+| GA_MEASUREMENT_ID | G-WJP54KYBJ2 | Exposed | Public anyway, not sensitive |
+
+**Critical Action Required by User**:
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Navigate to APIs & Services → Credentials
+3. Find OAuth 2.0 Client ID: `342254914296-lsa8lbp057lafv12tfc7mnraante9vqu`
+4. Delete or regenerate the client secret
+5. Create new OAuth credentials
+6. Update local `.env` file with new credentials (won't be committed)
+
+**What Changed**:
+- `.env` file no longer tracked by git (removed from index with `--cached`)
+- Local `.env` file still exists but contains only placeholder values
+- `.gitignore` properly configured to prevent future accidents
+- Git history still contains the exposed credentials (cannot be removed without force-pushing)
+
+**Lessons Learned / Gotchas**:
+1. **Always check .gitignore before committing sensitive files**
+2. **Corrupted .gitignore files can silently fail** - watch for encoding issues
+3. **`.env` files should NEVER be committed to git**
+4. **OAuth2 secrets in git history are permanently compromised** - must be revoked
+5. **`git rm --cached` removes from tracking but keeps local file** - useful for this scenario
+
+**Security Best Practices Applied**:
+- Added comprehensive .gitignore entries
+- Documented the security incident in commit message
+- Provided clear instructions for credential revocation
+- Kept local .env file for development (but sanitized)
+- Ensured .env won't be tracked in future commits
+
+**Notes**:
+- The `.env` file is now properly ignored and won't be committed again
+- User has been informed of the security issue and required actions
+- Development can continue with local .env file (will stay untracked)
+- Production deployments should use environment variables, not .env files
+- This incident highlights the importance of secret management infrastructure
+
 ---
 
 ## Instructions for Future AI Sessions
