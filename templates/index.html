@@ -545,6 +545,20 @@
                         Triangle size optimization
                     </label>
                 </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="simplifyMesh">
+                        Mesh simplification
+                    </label>
+                </div>
+                <div id="simplificationControls" style="display:none; margin-left: 20px;">
+                    <div class="form-group">
+                        <label>
+                            Simplification (% reduction): <span id="simplificationRatioValue">50%</span>
+                        </label>
+                        <input type="range" id="simplificationRatio" min="10" max="90" value="50" step="5">
+                    </div>
+                </div>
 
                 <div class="section-title">Blocker Volume</div>
                 <div class="form-group">
@@ -1435,6 +1449,20 @@
             updateBlockerPreview();
         });
 
+        // Handle mesh simplification checkbox
+        const simplifyMesh = document.getElementById('simplifyMesh');
+        const simplificationControls = document.getElementById('simplificationControls');
+        const simplificationRatio = document.getElementById('simplificationRatio');
+        const simplificationRatioValue = document.getElementById('simplificationRatioValue');
+
+        simplifyMesh.addEventListener('change', (e) => {
+            simplificationControls.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        simplificationRatio.addEventListener('input', (e) => {
+            simplificationRatioValue.textContent = e.target.value + '%';
+        });
+
         function updateBlockerTypeVisibility() {
             const type = blockerType.value;
             cylinderOptions.style.display = type === 'cylinder' ? 'block' : 'none';
@@ -1661,6 +1689,10 @@
             formData.append('skip_bottom', document.getElementById('skipBottom').checked);
             formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
 
+            // Mesh simplification parameters
+            formData.append('simplify_mesh', document.getElementById('simplifyMesh').checked);
+            formData.append('simplification_ratio', document.getElementById('simplificationRatio').value / 100);
+
             try {
                 const response = await fetch('/api/estimate', {
                     method: 'POST',
@@ -1763,6 +1795,10 @@
             formData.append('noise_persistence', document.getElementById('noisePersistence').value);
             formData.append('skip_bottom', document.getElementById('skipBottom').checked);
             formData.append('skip_small_triangles', document.getElementById('skipSmallTriangles').checked);
+
+            // Mesh simplification parameters
+            formData.append('simplify_mesh', document.getElementById('simplifyMesh').checked);
+            formData.append('simplification_ratio', document.getElementById('simplificationRatio').value / 100);
 
             // Blocker parameters
             if (useBlocker.checked) {

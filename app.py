@@ -317,6 +317,10 @@ def process_stl():
         use_default_cube = request.form.get('use_default_cube', 'false').lower() == 'true'
         cube_size = float(request.form.get('cube_size', 20))
 
+        # Mesh simplification parameters
+        simplify_mesh_enabled = request.form.get('simplify_mesh', 'false').lower() == 'true'
+        simplification_ratio = float(request.form.get('simplification_ratio', 0.5))
+
         # Blocker parameters
         use_blocker = request.form.get('use_blocker', 'false').lower() == 'true'
         blocker_type = request.form.get('blocker_type', 'cylinder')  # cylinder, cube, or custom
@@ -346,8 +350,9 @@ def process_stl():
 
         app.logger.info(f"Processing request - use_default_cube={use_default_cube}, "
                        f"thickness={thickness}, point_distance={point_distance}, "
-                       f"noise_type={noise_type}, use_blocker={use_blocker}, "
-                       f"blocker_algorithm={blocker_algorithm}")
+                       f"noise_type={noise_type}, simplify_mesh={simplify_mesh_enabled}, "
+                       f"simplification_ratio={simplification_ratio if simplify_mesh_enabled else 'N/A'}, "
+                       f"use_blocker={use_blocker}, blocker_algorithm={blocker_algorithm}")
 
         # Validate noise type
         if noise_type not in NOISE_TYPES:
@@ -404,6 +409,25 @@ def process_stl():
 
         # Log mesh info
         app.logger.info(f"Input mesh has {len(input_mesh.vectors)} triangles")
+
+        # Apply mesh simplification if enabled (BEFORE triangle optimization and texturing)
+        if simplify_mesh_enabled:
+            app.logger.info(f"Applying mesh simplification with {int(simplification_ratio * 100)}% reduction")
+            try:
+                from texturizer import simplify_mesh
+                input_mesh = simplify_mesh(
+                    input_mesh,
+                    target_reduction=simplification_ratio,
+                    aggressiveness=7,
+                    preserve_border=True
+                )
+                app.logger.info(f"Simplified mesh has {len(input_mesh.vectors)} triangles")
+            except ImportError as ie:
+                app.logger.error(f"Mesh simplification failed: {str(ie)}")
+                return jsonify({'error': 'Mesh simplification requires pyfqmr library'}), 500
+            except Exception as e:
+                app.logger.error(f"Mesh simplification failed: {str(e)}")
+                return jsonify({'error': f'Mesh simplification failed: {str(e)}'}), 500
 
         # Handle blocker mesh
         blocker_mesh = None

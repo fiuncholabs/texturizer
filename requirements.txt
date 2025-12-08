@@ -5,6 +5,7 @@ numpy-stl
 noise
 scipy
 trimesh
+pyfqmr>=0.5.0
 
 # Production server
 gunicorn>=20.1.0

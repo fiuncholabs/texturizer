@@ -46,6 +46,15 @@ except ImportError:
     print("Warning: 'noise' library not installed. Only 'classic' noise type available.")
     print("Install with: pip install noise")
 
+# Try to import pyfqmr for mesh simplification
+try:
+    import pyfqmr
+    PYFQMR_AVAILABLE = True
+except ImportError:
+    PYFQMR_AVAILABLE = False
+    print("Warning: 'pyfqmr' library not installed. Mesh simplification not available.")
+    print("Install with: pip install pyfqmr")
+
 
 # Noise type constants matching OrcaSlicer
 NOISE_CLASSIC = 'classic'
@@ -1104,6 +1113,87 @@ def subdivide_triangle(v0, v1, v2, max_edge_length):
             queue.append((m01, m12, m20))
 
     return result
+
+
+def simplify_mesh(input_mesh, target_reduction=0.5, aggressiveness=7, preserve_border=True):
+    """
+    Simplify a mesh using Fast Quadric Mesh Reduction (pyfqmr).
+
+    This function reduces the triangle count of a mesh while preserving overall shape quality.
+    Should be applied BEFORE triangle size optimization and texturing for best results.
+
+    Args:
+        input_mesh: numpy-stl mesh object to simplify
+        target_reduction: Target reduction ratio (0.0 to 1.0)
+                         0.5 = reduce to 50% of original triangles
+                         0.75 = reduce to 25% of original triangles
+        aggressiveness: Controls simplification quality/speed tradeoff (1-10)
+                       Higher = faster but potentially lower quality
+                       Default: 7 (good balance)
+        preserve_border: Whether to preserve mesh boundaries (default: True)
+
+    Returns:
+        Simplified numpy-stl mesh object
+
+    Raises:
+        ImportError: If pyfqmr is not installed
+        ValueError: If target_reduction is not in valid range
+    """
+    if not PYFQMR_AVAILABLE:
+        raise ImportError("pyfqmr library is required for mesh simplification. "
+                         "Install with: pip install pyfqmr")
+
+    if not 0.0 < target_reduction < 1.0:
+        raise ValueError(f"target_reduction must be between 0 and 1, got {target_reduction}")
+
+    logger.info(f"Simplifying mesh: {len(input_mesh.vectors)} triangles")
+
+    # Convert numpy-stl mesh to pyfqmr format
+    # numpy-stl stores each triangle separately, so we need to extract unique vertices
+    vertices = input_mesh.vectors.reshape(-1, 3)
+    faces = np.arange(len(vertices)).reshape(-1, 3)
+
+    # Remove duplicate vertices (critical for proper simplification)
+    unique_vertices, inverse_indices = np.unique(vertices, axis=0, return_inverse=True)
+    unique_faces = inverse_indices.reshape(-1, 3).astype(np.int32)
+
+    logger.info(f"  Unique vertices: {len(unique_vertices)}, Faces: {len(unique_faces)}")
+
+    # Calculate target triangle count
+    original_count = len(unique_faces)
+    target_count = int(original_count * (1.0 - target_reduction))
+
+    # Ensure minimum triangle count
+    target_count = max(target_count, 4)  # At least 4 triangles (tetrahedron)
+
+    logger.info(f"  Target: {target_count} triangles ({int((1-target_reduction)*100)}% of original)")
+
+    # Create simplifier
+    mesh_simplifier = pyfqmr.Simplify()
+    mesh_simplifier.setMesh(unique_vertices.astype(np.float64), unique_faces.copy())
+
+    # Perform simplification
+    mesh_simplifier.simplify_mesh(
+        target_count=target_count,
+        aggressiveness=aggressiveness,
+        preserve_border=preserve_border,
+        verbose=0  # Suppress pyfqmr output
+    )
+
+    # Get simplified mesh
+    simplified_vertices, simplified_faces, _ = mesh_simplifier.getMesh()
+
+    actual_reduction = 100 * (1 - len(simplified_faces) / original_count)
+    logger.info(f"  Result: {len(simplified_faces)} triangles ({actual_reduction:.1f}% reduction)")
+
+    # Convert back to numpy-stl format
+    simplified_mesh = mesh.Mesh(np.zeros(len(simplified_faces), dtype=mesh.Mesh.dtype))
+    for i, face in enumerate(simplified_faces):
+        for j in range(3):
+            simplified_mesh.vectors[i][j] = simplified_vertices[face[j]]
+
+    return simplified_mesh
+
 
 def apply_fuzzy_skin(input_mesh, thickness=0.3, point_distance=0.8, seed=42,
                      noise_type=NOISE_CLASSIC, noise_scale=1.0, noise_octaves=4,
