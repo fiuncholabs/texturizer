@@ -25,7 +25,14 @@ A web application and command-line tool for applying fuzzy skin texture to STL f
   - `ridged` - Sharp ridge patterns
   - `voronoi` - Cell-based patterns
 - **Configurable Parameters** for fine-tuning texture
-- **Bottom layer skip** option for better bed adhesion
+- **OrcaSlicer-compatible features**:
+  - Bottom layer skip for better bed adhesion
+  - In-plane noise (XY-only displacement)
+  - XY-plane subdivision for uniform point density
+  - Edge-based noise to eliminate seams
+- **Performance optimizations**:
+  - Skip small triangle subdivision
+  - Mesh simplification after processing
 - **Binary or ASCII STL** export
 
 ---
@@ -145,6 +152,26 @@ python texturizer.py model.stl --noise voronoi --noise-scale 2.0
 python texturizer.py model.stl --noise ridged --skip-bottom
 ```
 
+### OrcaSlicer-Style Fuzzy Skin
+
+For maximum OrcaSlicer compatibility, use all three options together:
+
+```bash
+# OrcaSlicer-compatible fuzzy skin (recommended)
+python texturizer.py model.stl \
+    --noise-on-edges \          # Eliminates seams
+    --in-plane-noise \          # XY-only displacement
+    --xy-plane-subdivision      # Uniform point density
+
+# With performance optimization
+python texturizer.py model.stl \
+    --noise-on-edges \
+    --in-plane-noise \
+    --xy-plane-subdivision \
+    --skip-small-triangles \    # Skip tiny triangles
+    --simplify 0.3              # Reduce mesh by 30% after processing
+```
+
 ### Full Options
 
 ```bash
@@ -158,6 +185,11 @@ python texturizer.py model.stl \
     --noise-octaves 4 \         # octaves (perlin/billow)
     --noise-persistence 0.5 \   # persistence (perlin/billow)
     --skip-bottom \             # preserve bottom layer
+    --skip-small-triangles \    # performance optimization
+    --noise-on-edges \          # eliminate seams
+    --in-plane-noise \          # XY-only displacement
+    --xy-plane-subdivision \    # OrcaSlicer-style subdivision
+    --simplify 0.3 \            # reduce mesh by 30%
     --ascii                     # ASCII STL output
 ```
 
@@ -176,6 +208,11 @@ python texturizer.py model.stl \
 | `--noise-octaves` | `4` | Number of octaves for Perlin/Billow |
 | `--noise-persistence` | `0.5` | Amplitude persistence for Perlin/Billow |
 | `--skip-bottom` | `false` | Skip fuzzy skin on bottom layer |
+| `--skip-small-triangles` | `false` | Skip subdivision of very small triangles (performance) |
+| `--noise-on-edges` | `false` | Apply noise at triangle edges to eliminate seams |
+| `--in-plane-noise` | `false` | Apply noise only in XY plane (OrcaSlicer-style) |
+| `--xy-plane-subdivision` | `false` | Calculate subdivision in XY plane only (OrcaSlicer-style) |
+| `--simplify` | - | Simplify mesh after processing (0.0-1.0, e.g., 0.5 = 50% reduction) |
 | `--ascii` | `false` | Save as ASCII STL instead of binary |
 
 ---

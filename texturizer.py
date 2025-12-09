@@ -1594,7 +1594,9 @@ Examples:
   %(prog)s model.stl -o fuzzy.stl
   %(prog)s model.stl -t 0.5 -p 0.6 --noise perlin
   %(prog)s model.stl --noise voronoi --noise-scale 2.0
-  %(prog)s --cube-size 30 -t 0.4 --skip-bottom
+  %(prog)s model.stl --skip-bottom --skip-small-triangles
+  %(prog)s model.stl --noise-on-edges --in-plane-noise --xy-plane-subdivision
+  %(prog)s model.stl --simplify 0.5
 """
     )
     parser.add_argument(
@@ -1663,6 +1665,32 @@ Examples:
         help='Skip fuzzy skin on bottom layer (for better bed adhesion)'
     )
     parser.add_argument(
+        '--skip-small-triangles',
+        action='store_true',
+        help='Skip subdivision of very small triangles (performance optimization)'
+    )
+    parser.add_argument(
+        '--noise-on-edges',
+        action='store_true',
+        help='Apply noise at triangle edges to eliminate visible seams'
+    )
+    parser.add_argument(
+        '--in-plane-noise',
+        action='store_true',
+        help='Apply noise only in XY plane (like OrcaSlicer fuzzy skin)'
+    )
+    parser.add_argument(
+        '--xy-plane-subdivision',
+        action='store_true',
+        help='Calculate subdivision distance in XY plane only (OrcaSlicer-style)'
+    )
+    parser.add_argument(
+        '--simplify',
+        type=float,
+        metavar='RATIO',
+        help='Simplify mesh after processing (0.0-1.0, e.g., 0.5 = 50%% reduction)'
+    )
+    parser.add_argument(
         '--ascii',
         action='store_true',
         help='Save output as ASCII STL instead of binary'
@@ -1709,8 +1737,29 @@ Examples:
         noise_scale=args.noise_scale,
         noise_octaves=args.noise_octaves,
         noise_persistence=args.noise_persistence,
-        skip_bottom=args.skip_bottom
+        skip_bottom=args.skip_bottom,
+        skip_small_triangles=args.skip_small_triangles,
+        noise_on_edges=args.noise_on_edges,
+        in_plane_noise=args.in_plane_noise,
+        xy_plane_subdivision=args.xy_plane_subdivision
     )
+
+    # Apply mesh simplification if requested
+    if args.simplify:
+        if not PYFQMR_AVAILABLE:
+            print("Warning: pyfqmr library not installed. Skipping mesh simplification.")
+            print("Install with: pip install pyfqmr")
+        else:
+            if not 0.0 <= args.simplify <= 1.0:
+                print(f"Error: Simplification ratio must be between 0.0 and 1.0 (got {args.simplify})")
+                sys.exit(1)
+
+            print(f"Simplifying mesh (target reduction: {args.simplify*100:.0f}%)...")
+            original_count = len(output_mesh.vectors)
+            output_mesh = simplify_mesh(output_mesh, target_reduction=args.simplify)
+            final_count = len(output_mesh.vectors)
+            actual_reduction = (original_count - final_count) / original_count
+            print(f"  Reduced from {original_count} to {final_count} triangles ({actual_reduction*100:.1f}% reduction)")
 
     # Save result
     print(f"Saving to {args.output}...")
