@@ -169,7 +169,7 @@ python texturizer.py model.stl \
     --in-plane-noise \
     --xy-plane-subdivision \
     --skip-small-triangles \    # Skip tiny triangles
-    --simplify 0.3              # Reduce mesh by 30% after processing
+    --simplify 0.3              # Reduce mesh by 30% before processing
 ```
 
 ### Full Options
@@ -184,12 +184,12 @@ python texturizer.py model.stl \
     --noise-scale 1.0 \         # frequency scale
     --noise-octaves 4 \         # octaves (perlin/billow)
     --noise-persistence 0.5 \   # persistence (perlin/billow)
+    --simplify 0.3 \            # reduce mesh by 30% (before processing)
     --skip-bottom \             # preserve bottom layer
     --skip-small-triangles \    # performance optimization
     --noise-on-edges \          # eliminate seams
     --in-plane-noise \          # XY-only displacement
     --xy-plane-subdivision \    # OrcaSlicer-style subdivision
-    --simplify 0.3 \            # reduce mesh by 30%
     --ascii                     # ASCII STL output
 ```
 
@@ -212,7 +212,7 @@ python texturizer.py model.stl \
 | `--noise-on-edges` | `false` | Apply noise at triangle edges to eliminate seams |
 | `--in-plane-noise` | `false` | Apply noise only in XY plane (OrcaSlicer-style) |
 | `--xy-plane-subdivision` | `false` | Calculate subdivision in XY plane only (OrcaSlicer-style) |
-| `--simplify` | - | Simplify mesh after processing (0.0-1.0, e.g., 0.5 = 50% reduction) |
+| `--simplify` | - | Simplify mesh before processing (0.0-1.0, e.g., 0.5 = 50% reduction) |
 | `--ascii` | `false` | Save as ASCII STL instead of binary |
 
 ---

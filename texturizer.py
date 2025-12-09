@@ -1719,6 +1719,23 @@ Examples:
 
     print(f"Input mesh: {len(input_mesh.vectors)} triangles")
 
+    # Apply mesh simplification if requested (BEFORE fuzzy skin processing for performance)
+    if args.simplify:
+        if not PYFQMR_AVAILABLE:
+            print("Warning: pyfqmr library not installed. Skipping mesh simplification.")
+            print("Install with: pip install pyfqmr")
+        else:
+            if not 0.0 <= args.simplify <= 1.0:
+                print(f"Error: Simplification ratio must be between 0.0 and 1.0 (got {args.simplify})")
+                sys.exit(1)
+
+            print(f"Simplifying mesh (target reduction: {args.simplify*100:.0f}%)...")
+            original_count = len(input_mesh.vectors)
+            input_mesh = simplify_mesh(input_mesh, target_reduction=args.simplify)
+            final_count = len(input_mesh.vectors)
+            actual_reduction = (original_count - final_count) / original_count
+            print(f"  Reduced from {original_count} to {final_count} triangles ({actual_reduction*100:.1f}% reduction)")
+
     # Apply fuzzy skin
     noise_info = f"noise={args.noise}"
     if args.noise in [NOISE_PERLIN, NOISE_BILLOW, NOISE_RIDGED]:
@@ -1743,23 +1760,6 @@ Examples:
         in_plane_noise=args.in_plane_noise,
         xy_plane_subdivision=args.xy_plane_subdivision
     )
-
-    # Apply mesh simplification if requested
-    if args.simplify:
-        if not PYFQMR_AVAILABLE:
-            print("Warning: pyfqmr library not installed. Skipping mesh simplification.")
-            print("Install with: pip install pyfqmr")
-        else:
-            if not 0.0 <= args.simplify <= 1.0:
-                print(f"Error: Simplification ratio must be between 0.0 and 1.0 (got {args.simplify})")
-                sys.exit(1)
-
-            print(f"Simplifying mesh (target reduction: {args.simplify*100:.0f}%)...")
-            original_count = len(output_mesh.vectors)
-            output_mesh = simplify_mesh(output_mesh, target_reduction=args.simplify)
-            final_count = len(output_mesh.vectors)
-            actual_reduction = (original_count - final_count) / original_count
-            print(f"  Reduced from {original_count} to {final_count} triangles ({actual_reduction*100:.1f}% reduction)")
 
     # Save result
     print(f"Saving to {args.output}...")
